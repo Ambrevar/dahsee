@@ -1,3 +1,37 @@
-Dahsee -- A D-Bus monnitoring tool.
 
-TO BE COMPLETED.
+                      Dahsee -- A D-Bus monnitoring tool.
+                       http://github.com/ambrevar/dahsee
+
+             Copyright 2012 Pierre Neidhardt <ambrevar@gmail.com>
+
+Configuration
+-------------
+
+The only required dependency is D-Bus. You will need it for compilation.
+
+Building
+--------
+
+  $ make
+
+Installation
+------------
+
+  $ make install
+
+Manuals
+-------
+
+  $ man dahsee
+
+
+Git Repository
+--------------
+
+gitweb: http://github.com/ambrevar/dahsee
+
+
+Hacking
+-------
+
+Dahsee uses the Linux kernel coding style, with 4-spaces tabs.

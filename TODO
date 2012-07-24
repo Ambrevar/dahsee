@@ -1,0 +1,5 @@
+-Manage license.
+-Get message timestamp, source and destionation.
+-Get details on service, interface, objects.
+-Export support: JSON.
+-Export support: PCAP.
