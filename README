@@ -1,13 +1,14 @@
 
                       Dahsee -- A D-Bus monnitoring tool.
-                       http://github.com/ambrevar/dahsee
+                     https://bitbucket.org/ambrevar/dahsee
 
-             Copyright 2012 Pierre Neidhardt <ambrevar@gmail.com>
+             Copyright 2012 Pierre Neidhardt <ambrevar [at] gmail [dot] com>
 
 Configuration
 -------------
 
-The only required dependency is D-Bus. You will need it for compilation.
+The only required dependency is D-Bus. You will need it for compilation and
+runtime.
 
 Building
 --------
@@ -28,8 +29,8 @@ Manuals
 Git Repository
 --------------
 
-gitweb: http://github.com/ambrevar/dahsee
-
+Clone this repository
+git clone https://ambrevar@bitbucket.org/ambrevar/dahsee.git
 
 Hacking
 -------
