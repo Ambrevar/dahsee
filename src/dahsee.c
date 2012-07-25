@@ -4,20 +4,22 @@
  * @brief Dbus monitoring tool
  ******************************************************************************/
 
-#define DBUS_API_SUBJECT_TO_CHANGE
 #include <dbus/dbus.h>
+#include <json/json.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include <string.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <string.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#define VERSION "0.1"
-#define AUTHOR "Pierre Neidhardt <ambrevar [at] gmail [dot] com>"
-
+// TODO: temp vars. Clean later.
 #define SPY_BUS "spy.lair"
 #define FILTER_SIZE 1024
+#define TEMPFILE "temp.json"
 
 /**
  * Timestamps.
@@ -28,8 +30,7 @@
 static struct timeval time_begin;
 static struct timeval time_end;
 
-
-inline void timer_print()
+void timer_print()
 {
     printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
     printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
@@ -37,7 +38,63 @@ inline void timer_print()
 
 
 /**
- * Spy: catch all signals.
+ * JSON
+ */
+void jsonimport()
+{
+    struct json_object *new_obj;
+
+    char *input;
+    FILE* tempfile;
+    unsigned long pos;
+
+    tempfile  = fopen(TEMPFILE,"rb");
+    if (access(TEMPFILE, R_OK) != 0)
+    {
+        perror(TEMPFILE);
+        return;
+    }
+
+    // File buffering.
+    fseek(tempfile, 0, SEEK_END);
+    pos = ftell(tempfile);
+    fseek(tempfile, 0, SEEK_SET);
+
+    input = malloc(pos*sizeof(char));
+    fread(input, sizeof(char), pos, tempfile);
+    fclose(tempfile);
+
+    // Parsing.
+    new_obj = json_tokener_parse(input);
+    printf("new_obj.to_string()=%s\n\n", json_object_to_json_string(new_obj));
+
+    json_object_put(new_obj);
+
+    return;
+}
+
+void jsonexport()
+{
+    struct json_object *export_object;
+
+    FILE* tempfile;
+
+    tempfile  = fopen(TEMPFILE,"wb");
+    if (access(TEMPFILE, W_OK) != 0)
+    {
+        perror(TEMPFILE);
+        return;
+    }
+
+    // TODO: fill json object.
+    /* fwrite(export_object.to_string(), sizeof(char), strlen(export_object.to_string()  ) */
+
+    fclose(tempfile);
+    return;
+}
+
+/**
+ * Catch all signals.
  */
 void spy(/* char* param */)
 {
@@ -114,9 +171,7 @@ void spy(/* char* param */)
     }
 }
 
-
-
-inline void 
+void
 print_help(const char* name)
 {
     printf ("Syntax: %s [-s] [-d] [<param>]\n\n", name);
@@ -128,7 +183,7 @@ print_help(const char* name)
     puts("  -v : Print version.");
 }
 
-inline void 
+void
 print_version(const char* name)
 {
     printf ("%s %s\n", name, VERSION);
@@ -147,6 +202,7 @@ main(int argc, char** argv)
     int c;
     extern char* optarg;
     extern int optind;
+    extern int optopt;
 
     while ( (c=getopt(argc,argv,":dhs:v")) != -1)
     {

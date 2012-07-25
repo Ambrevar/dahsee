@@ -2,36 +2,38 @@
 # Dahsee makefile
 # Date 2012-06-28
 ################################################################################
-## FIXME: does not work.
+## FIXME: does not work?
 .PHONY=test
 
-## Projects options
-USE_GLIB=false
+include config.mk
 
-##==============================================================================
+# CFLAGS+=-Wall -Wextra -Wshadow -Winline -pedantic
+CFLAGS+=-Wall -Wextra -Wshadow -Winline -pedantic -std=c99
 
-CC=gcc
-RM=rm -f
+# For use of getopt() in -pedantic
+CFLAGS+=-D_XOPEN_SOURCE=500
 
-CFLAGS+=-g -O0
-CFLAGS+=-Wall -Wextra -Wshadow -Winline
-# CFLAGS+=-Wdeclaration-after-statement
-LDFLAGS+=-lm
 LDFLAGS+=-lpcap -ljson
 
-ifeq ($(USE_GLIB),true)
-	CFLAGS+=$$(pkg-config --cflags dbus-glib-1)
-	LDFLAGS+=$$(pkg-config --libs dbus-glib-1)
-else
-	CFLAGS+=$$(pkg-config --cflags dbus-1)
-	LDFLAGS+=$$(pkg-config --libs dbus-1)
-endif
+CFLAGS+=$$(pkg-config --cflags dbus-1)
+LDFLAGS+=$$(pkg-config --libs dbus-1)
+
+
+## Projects options
+# USE_GLIB=false
+# ifeq ($(USE_GLIB),true)
+# 	CFLAGS+=$$(pkg-config --cflags dbus-glib-1)
+# 	LDFLAGS+=$$(pkg-config --libs dbus-glib-1)
+# else
+# 	CFLAGS+=$$(pkg-config --cflags dbus-1)
+# 	LDFLAGS+=$$(pkg-config --libs dbus-1)
+# endif
 
 BIN=dahsee
 
-all: dahsee
+all: $(BIN)
 
-dahsee: dahsee.c
+$(BIN): $(BIN).c
 	@$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 
 clean:
