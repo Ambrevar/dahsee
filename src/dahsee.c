@@ -30,7 +30,7 @@
 static struct timeval time_begin;
 static struct timeval time_end;
 
-void timer_print()
+static inline void timer_print()
 {
     printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
     printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
@@ -40,7 +40,7 @@ void timer_print()
 /**
  * JSON
  */
-void jsonimport()
+static void jsonimport()
 {
     struct json_object *new_obj;
 
@@ -73,7 +73,7 @@ void jsonimport()
     return;
 }
 
-void jsonexport()
+static void jsonexport()
 {
     struct json_object *export_object;
 
@@ -96,7 +96,7 @@ void jsonexport()
 /**
  * Catch all signals.
  */
-void spy(/* char* param */)
+static void spy(/* char* param */)
 {
     DBusMessage* msg;
     DBusMessageIter args;
@@ -171,7 +171,7 @@ void spy(/* char* param */)
     }
 }
 
-void
+static inline void
 print_help(const char* name)
 {
     printf ("Syntax: %s [-s] [-d] [<param>]\n\n", name);
@@ -183,7 +183,7 @@ print_help(const char* name)
     puts("  -v : Print version.");
 }
 
-void
+static inline void
 print_version(const char* name)
 {
     printf ("%s %s\n", name, VERSION);

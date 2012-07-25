@@ -3,6 +3,4 @@
 -Get details on service, interface, objects.
 -Export support: JSON.
 -Export support: PCAP.
-
-Code related
--inline in std=c99?
+-Kernel tracing tool information? (e.g. strace)
