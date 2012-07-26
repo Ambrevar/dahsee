@@ -5,7 +5,6 @@
  ******************************************************************************/
 
 #include <dbus/dbus.h>
-#include <json/json.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -15,6 +14,13 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+// Data storage.
+// JSON: Let's use a static json lib here.
+#include "json.h"
+/* #include "ccan/json/json.h" */
+/* #include <json/json.h> */
+
 
 // TODO: temp vars. Clean later.
 #define SPY_BUS "spy.lair"
@@ -42,7 +48,7 @@ static inline void timer_print()
  */
 static void jsonimport()
 {
-    struct json_object *new_obj;
+    /* struct json_object *new_obj; */
 
     char *input;
     FILE* tempfile;
@@ -65,31 +71,46 @@ static void jsonimport()
     fclose(tempfile);
 
     // Parsing.
-    new_obj = json_tokener_parse(input);
-    printf("new_obj.to_string()=%s\n\n", json_object_to_json_string(new_obj));
+    /* new_obj = json_tokener_parse(input); */
+    /* printf("new_obj.to_string()=%s\n\n", json_object_to_json_string(new_obj)); */
 
-    json_object_put(new_obj);
+    /* json_object_put(new_obj); */
 
     return;
 }
 
 static void jsonexport()
 {
-    struct json_object *export_object;
+    struct JsonNode *export_object;
+    struct JsonNode *testbool = json_mkbool(true);
+    struct JsonNode *testnum = json_mknumber(3.1415);
+    struct JsonNode *teststr = json_mkstring("€€€€ €€€€");
 
-    FILE* tempfile;
+    FILE* export_file;
 
-    tempfile  = fopen(TEMPFILE,"wb");
+    // Binary mode is useless on POSIX.
+    export_file  = fopen(TEMPFILE,"w");
     if (access(TEMPFILE, W_OK) != 0)
     {
         perror(TEMPFILE);
         return;
     }
 
-    // TODO: fill json object.
-    /* fwrite(export_object.to_string(), sizeof(char), strlen(export_object.to_string()  ) */
+    export_object = json_mkobject();
+    json_append_member(export_object, "testbool", testbool);
+    json_append_member(export_object, "teststr", teststr);
+    json_append_member(export_object, "testnum", testnum);
 
-    fclose(tempfile);
+    char * tmp=json_stringify(export_object,"    ");
+
+    // Note: this works with UTF-8.
+    fwrite( tmp , sizeof(char), strlen(tmp), export_file  );
+
+    free(tmp);
+
+    json_delete(export_object);
+
+    fclose(export_file);
     return;
 }
 
@@ -269,6 +290,8 @@ main(int argc, char** argv)
     {
         spy();
     }
+
+    jsonexport();
 
     return 0;
 }
