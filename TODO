@@ -1,6 +1,15 @@
 -Manage license.
--Get message timestamp, source and destionation.
+-Get message timestamp, source and destination.
 -Get details on service, interface, objects.
--Export support: JSON.
--Export support: PCAP.
--Kernel tracing tool information? (e.g. strace)
+-Storage: JSON with internal code.
+-Storage: JSON with dynamic jansson link.
+-Storage: PCAP.
+-Export report HTML.
+-Export report PDF.
+-Graphs.
+-Stats.
+-Kernel tracing tool information? (e.g. strace.)
+-Make JSON lib C99 compliant.
+-Curses.
+-GUI.
+

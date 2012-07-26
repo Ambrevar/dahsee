@@ -1,3 +1,4 @@
+/* -*- mode: C -*- */
 /*******************************************************************************
  * @file dahsee.c
  * @date 2012-06-28
@@ -104,7 +105,7 @@ static void jsonexport()
     char * tmp=json_stringify(export_object,"    ");
 
     // Note: this works with UTF-8.
-    fwrite( tmp , sizeof(char), strlen(tmp), export_file  );
+    /* fwrite( tmp , sizeof(char), strlen(tmp), export_file  ); */
 
     free(tmp);
 
@@ -112,6 +113,188 @@ static void jsonexport()
 
     fclose(export_file);
     return;
+}
+
+#ifdef __APPLE__
+#define TIME_FORMAT "%s\t%lu\t%d"
+#else
+#define TIME_FORMAT "%s\t%lu\t%lu"
+#endif
+#define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
+
+enum Flags
+{
+    FLAG_SERIAL = 1,
+    FLAG_REPLY_SERIAL = 2,
+    FLAG_SENDER = 4,
+    FLAG_DESTINATION = 8,
+    FLAG_PATH = 16,
+    FLAG_INTERFACE = 32,
+    FLAG_MEMBER = 64,
+    FLAG_ERROR_NAME = 128
+} ;
+
+static void
+message_mangler (DBusMessage *message)
+{
+    struct timeval t;
+    char* type;
+    unsigned int flag;
+
+    if (gettimeofday (&t, NULL) < 0)
+    {
+        perror("TIME");
+        return;
+    }
+
+    switch (dbus_message_get_type (message))
+    {
+    case DBUS_MESSAGE_TYPE_METHOD_CALL:
+        type = "Method Call";
+        flag = FLAG_SERIAL |
+            FLAG_SENDER |
+            FLAG_PATH |
+            FLAG_INTERFACE |
+            FLAG_MEMBER;
+        break;
+
+    case DBUS_MESSAGE_TYPE_METHOD_RETURN:
+        type = "Method return";
+        flag= FLAG_SERIAL |
+            FLAG_DESTINATION |
+            FLAG_REPLY_SERIAL;
+        break;
+
+    case DBUS_MESSAGE_TYPE_ERROR:
+        type = "Error";
+        flag = FLAG_SERIAL |
+            FLAG_DESTINATION |
+            FLAG_REPLY_SERIAL;
+        break;
+
+    case DBUS_MESSAGE_TYPE_SIGNAL:
+        type="Signal";
+        flag=FLAG_SERIAL |
+            FLAG_PATH |
+            FLAG_INTERFACE |
+            FLAG_MEMBER;
+        break;
+
+    default:
+        printf ("Unknown message.\n");
+        break;
+    }
+
+    // Print
+    /* printf (TIME_FORMAT, type, t.tv_sec, t.tv_usec); */
+
+    /* if (flag & FLAG_SERIAL) */
+    /*     printf ("\t%u", dbus_message_get_serial (message)); */
+
+    /* if (flag & FLAG_REPLY_SERIAL) */
+    /*     printf ("\t%u", dbus_message_get_reply_serial (message)); */
+
+    /* if (flag & FLAG_SENDER) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_sender (message))); */
+
+    /* if (flag & FLAG_DESTINATION) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_destination (message))); */
+
+    /* if (flag & FLAG_PATH) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_path (message))); */
+
+    /* if (flag & FLAG_INTERFACE) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_interface (message))); */
+
+    /* if (flag & FLAG_MEMBER) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_member (message))); */
+
+    /* if (flag & FLAG_ERROR_NAME) */
+    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_error_name (message))); */
+
+    /* printf ("\n"); */
+
+    // JSON Export
+    struct JsonNode *export_object;
+    export_object = json_mkobject();
+
+    struct JsonNode *export_type = json_mkstring(type);
+    struct JsonNode *export_time = json_mkobject();
+    struct JsonNode *export_time_sec = json_mknumber(t.tv_sec);
+    struct JsonNode *export_time_usec = json_mknumber(t.tv_usec);
+
+    json_append_member(export_object, "type", export_type);
+    json_append_member(export_time, "time_sec", export_time_sec);
+    json_append_member(export_time, "time_usec", export_time_usec);
+    json_append_member(export_object, "time", export_time);
+
+    if (flag & FLAG_SERIAL)
+    {
+        struct JsonNode *export_serial = json_mknumber(dbus_message_get_serial (message));
+        json_append_member(export_object, "serial", export_serial);
+    }
+
+    if (flag & FLAG_REPLY_SERIAL)
+    {
+        struct JsonNode *export_reply_serial = json_mknumber(dbus_message_get_reply_serial (message));
+        json_append_member(export_object, "reply_serial", export_reply_serial);
+    }
+
+    if (flag & FLAG_SENDER)
+    {
+        struct JsonNode *export_sender = json_mkstring(TRAP_NULL_STRING (dbus_message_get_sender (message)));
+        json_append_member(export_object, "sender", export_sender);
+    }
+
+    if (flag & FLAG_DESTINATION)
+    {
+        struct JsonNode *export_destination = json_mkstring(TRAP_NULL_STRING (dbus_message_get_destination (message)));
+        json_append_member(export_object, "destination", export_destination);
+    }
+
+    if (flag & FLAG_PATH)
+    {
+        struct JsonNode *export_path = json_mkstring(TRAP_NULL_STRING (dbus_message_get_path (message)));
+        json_append_member(export_object, "path", export_path);
+    }
+
+    if (flag & FLAG_INTERFACE)
+    {
+        struct JsonNode *export_interface = json_mkstring(TRAP_NULL_STRING (dbus_message_get_interface (message)));
+        json_append_member(export_object, "interface", export_interface);
+   }
+
+    if (flag & FLAG_MEMBER)
+    {
+        struct JsonNode *export_member = json_mkstring(TRAP_NULL_STRING (dbus_message_get_member (message)));
+        json_append_member(export_object, "member", export_member);
+    }
+
+    if (flag & FLAG_ERROR_NAME)
+    {
+        struct JsonNode *export_error_name = json_mkstring(TRAP_NULL_STRING (dbus_message_get_error_name (message)));
+        json_append_member(export_object, "error_name", export_error_name);
+    }
+
+    FILE* export_file;
+
+    // Binary mode is useless on POSIX.
+    export_file  = fopen(TEMPFILE,"a");
+    if (access(TEMPFILE, W_OK) != 0)
+    {
+        perror(TEMPFILE);
+        return;
+    }
+
+
+    char * tmp=json_stringify(export_object,"    ");
+    fwrite(tmp, sizeof(char), strlen(tmp), export_file);
+    fwrite("\n", sizeof(char), 1, export_file);
+
+    // Clean
+    free(tmp);
+    json_delete(export_object);
+    fclose(export_file);
 }
 
 /**
@@ -132,25 +315,27 @@ static void spy(/* char* param */)
     // initialise the errors
     dbus_error_init(&err);
    
-    // connect to the bus and check for errors
+    /* // connect to the bus and check for errors */
     conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set ( &err ) ) { 
+    if ( dbus_error_is_set ( &err ) ) {
         fprintf(stderr, "Connection Error (%s)\n", err.message);
-        dbus_error_free(&err); 
+        dbus_error_free(&err);
     }
-    if (NULL == conn) { 
+    if (NULL == conn) {
         exit(1);
     }
+
    
     // request our name on the bus and check for errors
     dbus_bus_request_name(conn, SPY_BUS, DBUS_NAME_FLAG_REPLACE_EXISTING , &err);
-    if (dbus_error_is_set(&err)) { 
+    if (dbus_error_is_set(&err)) {
         fprintf(stderr, "Name Error (%s)\n", err.message);
-        dbus_error_free(&err); 
+        dbus_error_free(&err);
     }
 
     // add a rule for which messages we want to see
-    snprintf(filter, FILTER_SIZE, "%s","type='signal'");
+    /* snprintf(filter, FILTER_SIZE, "%s","type='signal'"); */
+    snprintf(filter, FILTER_SIZE, "%s","");
 
     dbus_bus_add_match(conn, filter, &err); // see signals from the given interface
     dbus_connection_flush(conn);
@@ -158,38 +343,45 @@ static void spy(/* char* param */)
         fprintf(stderr, "Match Error (%s)\n", err.message);
         exit(1);
     }
+
+
     printf("Match rule sent.\n");
-    printf("Filter: %s\n",filter);
+    printf("### Filter: %s\n",filter);
 
-    // loop listening for signals being emmitted
-    while (true) {
-
+    int i;
+    for ( i=0 ; i<100 ; i++ )
+    {
         // non blocking read of the next available message
         dbus_connection_read_write_dispatch(conn, -1);
         msg = dbus_connection_pop_message(conn);
 
         if(msg != NULL)
         {
-            // check if the message is a signal from the correct interface and with the correct name
-            /* if (dbus_message_is_signal(msg, TEST_SIGNAL_INTERFACE, TEST_SIGNAL_NAME)) */
+
+            /* message_mangler (msg); */
+
+            /* // check if the message is a signal from the correct interface and with the correct name */
+            /* /\* if (dbus_message_is_signal(msg, TEST_SIGNAL_INTERFACE, TEST_SIGNAL_NAME)) *\/ */
+            /* /\* { *\/ */
+            /* // read the parameters */
+            /* if (!dbus_message_iter_init(msg, &args)) */
+            /*     fprintf(stderr, "Message has no parameters\n"); */
+            /* else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args)) */
+            /*     fprintf(stderr, "Argument is not a string!\n"); */
+            /* else */
             /* { */
-            // read the parameters
-            if (!dbus_message_iter_init(msg, &args))
-                fprintf(stderr, "Message Has No Parameters\n");
-            else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args)) 
-                fprintf(stderr, "Argument is not string!\n"); 
-            else
-            {
-                dbus_message_iter_get_basic(&args, &sigvalue);
+            /*     dbus_message_iter_get_basic(&args, &sigvalue); */
          
-                printf("Got Signal with value %s\n", sigvalue);
-            }
+            /*     printf("Got Signal value %s\n", sigvalue); */
             /* } */
+            /* /\* } *\/ */
       
-            // free the message
+            /* // free the message */
             dbus_message_unref(msg);
         }
     }
+
+    dbus_connection_unref(conn);
 }
 
 static inline void
@@ -225,7 +417,7 @@ main(int argc, char** argv)
     extern int optind;
     extern int optopt;
 
-    while ( (c=getopt(argc,argv,":dhs:v")) != -1)
+    while ( (c=getopt(argc,argv,":dhsv")) != -1)
     {
         switch(c)
         {
@@ -262,7 +454,7 @@ main(int argc, char** argv)
             exit(EXIT_SUCCESS);
         }
         
-        /* Change the file mode mask */
+        // Change the file mode mask following parameters.
         /* umask(0);        */
         
         /* Create a new SID for the child process */
@@ -277,7 +469,8 @@ main(int argc, char** argv)
         /*     /\* Log any failure here *\/ */
         /*     exit(EXIT_FAILURE); */
         /* }     */
-        
+
+        // TODO: implement daemon.
         for (;;)
         {
             sleep(60);
@@ -291,7 +484,7 @@ main(int argc, char** argv)
         spy();
     }
 
-    jsonexport();
+    /* jsonexport(); */
 
     return 0;
 }
