@@ -7,12 +7,13 @@
 
 include config.mk
 
-## TODO: must make json.c following C99.
-CFLAGS+=-Wall -Wextra -Wshadow -Winline
-# CFLAGS+=-Wall -Wextra -Wshadow -Winline -pedantic -std=c99
+## TODO: must make json.c following C99 instead of C11?
+# CFLAGS+=-Wall -Wextra -Wshadow -Winline
+CFLAGS+=-Wall -Wextra -Wshadow -Winline -pedantic -std=c11
 
-# For use of getopt() in -pedantic
-CFLAGS+=-D_XOPEN_SOURCE=500
+# For use of getopt() with -pedantic.
+CFLAGS+=-D_XOPEN_SOURCE=700
+# CFLAGS+=-D_ISOC11_SOURCE
 
 LDFLAGS+=-lpcap -ljson
 
@@ -21,7 +22,6 @@ LDFLAGS+=$$(pkg-config --libs dbus-1)
 
 # For JSON
 CFLAGS+=-I "ccan/json/"
-# CFLAGS+=-I "."
 
 ## Projects options
 # USE_GLIB=false
@@ -32,8 +32,6 @@ CFLAGS+=-I "ccan/json/"
 # 	CFLAGS+=$$(pkg-config --cflags dbus-1)
 # 	LDFLAGS+=$$(pkg-config --libs dbus-1)
 # endif
-
-# CFLAGS+=ccan/json/json.c
 
 BIN=dahsee
 SRC=dahsee.c ccan/json/json.c

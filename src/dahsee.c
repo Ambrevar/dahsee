@@ -14,6 +14,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 // Data storage.
@@ -137,15 +138,20 @@ enum Flags
 static void
 message_mangler (DBusMessage *message)
 {
-    struct timeval t;
+    struct timeval time_machine;
+    struct tm * time_human;
     char* type;
     unsigned int flag;
 
-    if (gettimeofday (&t, NULL) < 0)
+    if (gettimeofday (&time_machine, NULL) < 0)
     {
         perror("TIME");
         return;
     }
+
+    /* time_human = localtime( &(time_machine.tv_sec) ); */
+    time_human = gmtime( &(time_machine.tv_sec) );
+
 
     switch (dbus_message_get_type (message))
     {
@@ -219,14 +225,23 @@ message_mangler (DBusMessage *message)
     export_object = json_mkobject();
 
     struct JsonNode *export_type = json_mkstring(type);
-    struct JsonNode *export_time = json_mkobject();
-    struct JsonNode *export_time_sec = json_mknumber(t.tv_sec);
-    struct JsonNode *export_time_usec = json_mknumber(t.tv_usec);
-
     json_append_member(export_object, "type", export_type);
-    json_append_member(export_time, "time_sec", export_time_sec);
-    json_append_member(export_time, "time_usec", export_time_usec);
+
+    struct JsonNode *export_time = json_mkobject();
+    struct JsonNode *export_time_sec = json_mknumber(time_machine.tv_sec);
+    struct JsonNode *export_time_usec = json_mknumber(time_machine.tv_usec);
+    json_append_member(export_time, "sec", export_time_sec);
+    json_append_member(export_time, "usec", export_time_usec);
     json_append_member(export_object, "time", export_time);
+
+    struct JsonNode *export_time_human = json_mkobject();
+    struct JsonNode *export_time_human_hour = json_mknumber(time_human->tm_hour);
+    struct JsonNode *export_time_human_min = json_mknumber(time_human->tm_min);
+    struct JsonNode *export_time_human_sec = json_mknumber(time_human->tm_sec);
+    json_append_member(export_time_human, "hour", export_time_human_hour);
+    json_append_member(export_time_human, "min", export_time_human_min);
+    json_append_member(export_time_human, "sec", export_time_human_sec);
+    json_append_member(export_object, "time (human)", export_time_human);
 
     if (flag & FLAG_SERIAL)
     {
@@ -310,32 +325,31 @@ static void spy(/* char* param */)
 
     char filter[FILTER_SIZE];
 
-    printf("Listening for signals\n");
+    /* printf("Listening for signals\n"); */
 
-    // initialise the errors
+    // Initialise the errors API.
     dbus_error_init(&err);
    
-    /* // connect to the bus and check for errors */
     conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
     if ( dbus_error_is_set ( &err ) ) {
         fprintf(stderr, "Connection Error (%s)\n", err.message);
         dbus_error_free(&err);
     }
-    if (NULL == conn) {
+    if (conn == NULL) {
         exit(1);
     }
 
    
-    // request our name on the bus and check for errors
+    // Register monitor on bus.
     dbus_bus_request_name(conn, SPY_BUS, DBUS_NAME_FLAG_REPLACE_EXISTING , &err);
     if (dbus_error_is_set(&err)) {
         fprintf(stderr, "Name Error (%s)\n", err.message);
         dbus_error_free(&err);
     }
 
-    // add a rule for which messages we want to see
+    // Message filters.
     /* snprintf(filter, FILTER_SIZE, "%s","type='signal'"); */
-    snprintf(filter, FILTER_SIZE, "%s","");
+    /* snprintf(filter, FILTER_SIZE, "%s",""); */
 
     dbus_bus_add_match(conn, filter, &err); // see signals from the given interface
     dbus_connection_flush(conn);
@@ -344,12 +358,12 @@ static void spy(/* char* param */)
         exit(1);
     }
 
+    /* printf("Match rule sent.\n"); */
+    /* printf("### Filter: %s\n",filter); */
 
-    printf("Match rule sent.\n");
-    printf("### Filter: %s\n",filter);
-
+    // TEMP: arbitrary limit.
     int i;
-    for ( i=0 ; i<100 ; i++ )
+    for ( i=0 ; i<50 ; i++ )
     {
         // non blocking read of the next available message
         dbus_connection_read_write_dispatch(conn, -1);
@@ -358,7 +372,7 @@ static void spy(/* char* param */)
         if(msg != NULL)
         {
 
-            /* message_mangler (msg); */
+            message_mangler (msg);
 
             /* // check if the message is a signal from the correct interface and with the correct name */
             /* /\* if (dbus_message_is_signal(msg, TEST_SIGNAL_INTERFACE, TEST_SIGNAL_NAME)) *\/ */
@@ -385,9 +399,9 @@ static void spy(/* char* param */)
 }
 
 static inline void
-print_help(const char* name)
+print_help()
 {
-    printf ("Syntax: %s [-s] [-d] [<param>]\n\n", name);
+    printf ("Syntax: %s [-s] [-d] [<param>]\n\n", APPNAME);
 
     puts("Usage:");
     puts("  -d : Daemonize.");
@@ -397,9 +411,13 @@ print_help(const char* name)
 }
 
 static inline void
-print_version(const char* name)
+print_version()
 {
-    printf ("%s %s\n", name, VERSION);
+    printf ("%s %s\n", APPNAME, VERSION);
+    printf ("Copyright © %s %s\n", YEAR, AUTHOR);
+    /* printf ("MIT License\n"); */
+    /* printf ("This is free software: you are free to change and redistribute it.\n"); */
+    /* printf ("There is NO WARRANTY, to the extent permitted by law.\n"); */
 }
 
 
@@ -425,13 +443,13 @@ main(int argc, char** argv)
             daemonize=true;
                 break;
         case 'h':
-            print_help(argv[0]);
+            print_help();
             return 0;
         case 's':
             run_spy=true;
             break;
         case 'v':
-            print_version(argv[0]);
+            print_version();
             return 0;
         case ':':
             printf ("-%c needs an argument.\n", optopt);
