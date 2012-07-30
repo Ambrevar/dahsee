@@ -149,9 +149,10 @@ message_mangler (DBusMessage *message)
         return;
     }
 
+    // Use "localtime" or "gmtime" to get date and time from the elapsed seconds
+    // since epoch.
     /* time_human = localtime( &(time_machine.tv_sec) ); */
     time_human = gmtime( &(time_machine.tv_sec) );
-
 
     switch (dbus_message_get_type (message))
     {
