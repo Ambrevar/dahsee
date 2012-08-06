@@ -5,6 +5,7 @@
  * @brief Dbus monitoring tool
  ******************************************************************************/
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -16,6 +17,8 @@
 #include <unistd.h>
 
 #include <dbus/dbus.h>
+
+static volatile sig_atomic_t doneflag = 0;
 
 // Web interface with microhttpd.
 // Needs string.h, stdio.h, stdlib.h
@@ -1607,6 +1610,12 @@ print_version()
 }
 
 
+void nice_close(int sig)
+{
+    printf ("Print this before closing\n");
+    exit(sig);
+}
+
 int
 main(int argc, char** argv)
 {
@@ -1678,6 +1687,16 @@ main(int argc, char** argv)
         run_daemon();
     }
 
+
+    struct sigaction act;
+    act.sa_handler = nice_close;
+    act.sa_flags=0;
+
+    if ((sigemptyset(&act.sa_mask) == -1) ||
+        (sigaction(SIGINT, &act, NULL) == -1)) {
+        perror("Failed to set SIGINT handler");
+        return 1;
+    }
 
     // Functions.
     if (run_spy == true)
