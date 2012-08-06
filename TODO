@@ -4,8 +4,13 @@
 -Storage: JSON with internal code.
 -Export report HTML.
 -Stats.
+-Stats. (count for bus name, interface, object, member, dest|| size -- largest, smallest, mean)
 -Make JSON lib C99 compliant.
 -Web interface.
+-Add info: method call parameters / signature / duration, destination, process, bus name, message size
+
+-Sort by time
+-Index ? Bus name, Interface, Object, Member, Signal?
 
 -Storage: JSON with dynamic jansson link.
 -Storage: PCAP.
