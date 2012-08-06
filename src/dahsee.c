@@ -41,8 +41,8 @@ static volatile sig_atomic_t doneflag = 0;
 #define XML_NODE_ARG "arg"
 
 #define XML_PROPERTY_NAME "name"
-#define XML_PROPERTY_TYPE "type" // ARG only
-#define XML_PROPERTY_DIRECTION "direction" // ARG only
+#define XML_PROPERTY_TYPE "type"        // ARG only
+#define XML_PROPERTY_DIRECTION "direction"      // ARG only
 
 #define XML_VALUE_DIRECTION_IN "in"
 #define XML_VALUE_DIRECTION_OUT "out"
@@ -50,30 +50,30 @@ static volatile sig_atomic_t doneflag = 0;
 struct xml_dict
 {
     char key;
-    char* value;
+    char *value;
 };
 
 struct xml_dict xml_value_type_table[] = {
-    { 'y', "Byte"         },
-    { 'b', "Boolean"      },
-    { 'n', "Int16"        },
-    { 'q', "Uint16"       },
-    { 'i', "Int32"        },
-    { 'u', "Uint32"       },
-    { 'x', "Int64"        },
-    { 't', "Uint64"       },
-    { 'd', "Double"       },
-    { 's', "String"       },
-    { 'o', "Object Path"  },
-    { 'g', "Signature"    },
-    { 'a', "Array of"     },
-    { '(', "Struct ("     },
-    { ')', ")"            },
-    { 'v', "Variant"      },
-    { '{', "Dict entry {" },
-    { '}', "}"            },
-    { 'h', "Unix fd"      },
-    { '\0', NULL          }
+    {'y', "Byte"},
+    {'b', "Boolean"},
+    {'n', "Int16"},
+    {'q', "Uint16"},
+    {'i', "Int32"},
+    {'u', "Uint32"},
+    {'x', "Int64"},
+    {'t', "Uint64"},
+    {'d', "Double"},
+    {'s', "String"},
+    {'o', "Object Path"},
+    {'g', "Signature"},
+    {'a', "Array of"},
+    {'(', "Struct ("},
+    {')', ")"},
+    {'v', "Variant"},
+    {'{', "Dict entry {"},
+    {'}', "}"},
+    {'h', "Unix fd"},
+    {'\0', NULL}
 };
 
 // Reserved. Not used for now according to D-Bus specification.
@@ -95,14 +95,6 @@ struct xml_dict xml_value_type_table[] = {
 #include "json.h"
 
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO: temp vars. Clean later.
-#define SPY_BUS "spy.lair"
-#define FILTER_SIZE 1024
-#define TEMPFILE "temp.json"
-
 /**
  * Timestamps.
  * time_begin serves as chrono reference.
@@ -113,11 +105,18 @@ struct xml_dict xml_value_type_table[] = {
  *   printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
  *
  */
+#ifdef __APPLE__
+#    define TIME_FORMAT "%s\t%lu\t%d"
+#else
+#    define TIME_FORMAT "%s\t%lu\t%lu"
+#endif
+
 static struct timeval time_begin;
 static struct timeval time_end;
 
 // TODO: remove later
-static inline void timer_print()
+static inline void
+timer_print ()
 {
     printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
     printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
@@ -125,495 +124,224 @@ static inline void timer_print()
 
 
 
-/**
- * List names on "session bus".
- */
-void list()
-{
-    // Send method call.
-    // ListNames on                  
+/*******************************************************************************
+ ******************************************************************************/
 
-    DBusMessage* msg;
-    DBusMessageIter args;
-    DBusMessageIter name_list;
-    DBusConnection* conn;
-    DBusError err;
-    DBusPendingCall* pending;
-    char* name;
-    printf("List on %s, %s, %s\n",
-           DBUS_SERVICE_DBUS,
-           DBUS_PATH_DBUS,
-           DBUS_INTERFACE_DBUS
-        );
-
-    // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
-    {
-        fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
-    }
-    if (conn == NULL)
-    {
-        exit(1);
-    }
-
-
-    // create a new method call and check for errors
-    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
-                                       DBUS_PATH_DBUS, // object to call on
-                                       DBUS_INTERFACE_DBUS, // interface to call on
-                                       "ListNames"); // method name
-
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
-    }
-
-    // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
-    }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
-    // free message
-    dbus_message_unref(msg);
-   
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
-    }
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-
-    // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_ARRAY != dbus_message_iter_get_arg_type(&args))
-        fprintf(stderr, "Argument is not an array!\n");
-    else if (DBUS_TYPE_STRING != dbus_message_iter_get_element_type(&args))
-    {
-        fprintf(stderr,"Element type received: %d\n",
-                dbus_message_iter_get_element_type(&args));
-        fprintf(stderr,"Expected : %d\n", DBUS_TYPE_STRING);
-    }
-
-    dbus_message_iter_recurse(&args, &name_list);
-
-    while (dbus_message_iter_next(&name_list))
-    {
-        // Should check for type, but assume OK since session bus.
-        dbus_message_iter_get_basic(&name_list, &name);
-        printf("Bus name: %s\n", name);
-    }
-   
-    // free reply and close connection
-    dbus_message_unref(msg);   
-}
+// TODO: temp vars. Clean later.
+#define SPY_BUS "spy.lair"
+#define FILTER_SIZE 1024
+#define TEMPFILE "temp.json"
 
 /**
- * List activable names on "session bus".
+ * Bus Queries
+ *
+ * D-Bus provides a service with method that can return useful details about
+ * current session / system. We use one function to centralize this: the
+ * 'query' parameter will define what information we want.
  */
-void listAct()
+enum Queries
 {
-    // Send method call.
-    // ListNames on                  
+    QUERY_LIST_NAMES = 1,
+    QUERY_ACTIVATABLE_NAMES = 2,
+    QUERY_GET_NAME_OWNER = 4,
+    QUERY_GET_CONNECTION_UNIX_USER = 8,
+    QUERY_GET_CONNECTION_UNIX_PROCESS_ID = 16
+};
 
-    DBusMessage* msg;
-    DBusMessageIter args;
-    DBusMessageIter name_list;
-    DBusConnection* conn;
-    DBusError err;
-    DBusPendingCall* pending;
-    char* name;
-    printf("List on %s, %s, %s\n",
-           DBUS_SERVICE_DBUS,
-           DBUS_PATH_DBUS,
-           DBUS_INTERFACE_DBUS
-        );
-
-    // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
-    {
-        fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
-    }
-    if (conn == NULL)
-    {
-        exit(1);
-    }
-
-
-    // create a new method call and check for errors
-    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
-                                       DBUS_PATH_DBUS, // object to call on
-                                       DBUS_INTERFACE_DBUS, // interface to call on
-                                       "ListActivatableNames"); // method name
-
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
-    }
-
-    // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
-    }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
-    // free message
-    dbus_message_unref(msg);
-   
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
-    }
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-
-    // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_ARRAY != dbus_message_iter_get_arg_type(&args))
-    {
-        fprintf(stderr, "Argument is not an array!\n");
-        dbus_message_iter_get_basic(&args, &name);
-        printf("Error msg: %s\n", name);
-        return;
-    }
-    else if (DBUS_TYPE_STRING != dbus_message_iter_get_element_type(&args))
-    {
-        fprintf(stderr,"Element type received: %d\n",
-                dbus_message_iter_get_element_type(&args));
-        fprintf(stderr,"Expected : %d\n", DBUS_TYPE_STRING);
-    }
-
-    dbus_message_iter_recurse(&args, &name_list);
-
-    while (dbus_message_iter_next(&name_list))
-    {
-        // Should check for type, but assume OK since session bus.
-        dbus_message_iter_get_basic(&name_list, &name);
-        printf("Bus name: %s\n", name);
-    }
-   
-    // free reply and close connection
-    dbus_message_unref(msg);   
-}
-
-
-/**
- * Get Name Owner
- */
-void getNameOwner()
+void
+queryBus(int query, char* parameter)
 {
-    // Send method call.
-    // ListNames on                  
+    DBusConnection *connection;
+    DBusError error;
 
-    DBusMessage* msg;
+    DBusMessage *message = NULL;
     DBusMessageIter args;
-    DBusConnection* conn;
-    DBusError err;
-    DBusPendingCall* pending;
-    char* name;
+    DBusMessageIter subargs;
+    DBusBasicValue* argvalue;
+    bool need_parameter = false;
 
-    // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
+    DBusPendingCall *pending;
+
+    // Init
+    dbus_error_init (&error);
+
+    connection = dbus_bus_get (DBUS_BUS_SESSION, &error);
+    if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
+        fprintf (stderr, "Connection Error (%s)", error.message);
+        dbus_error_free (&error);
     }
-    if (conn == NULL)
+    if (connection == NULL)
+        exit (1);
+
+
+    // Create a new method call.
+    switch(query)
     {
-        exit(1);
-    }
-
-
-    // create a new method call and check for errors
-    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
-                                       DBUS_PATH_DBUS, // object to call on
-                                       DBUS_INTERFACE_DBUS, // interface to call on
-                                       "GetNameOwner"); // method name
-
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
-    }
-
-    char* param="org.naquadah.awesome.awful";
-
-    // append arguments
-    dbus_message_iter_init_append(msg, &args);
-    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-
-    // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
-    }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
-    // free message
-    dbus_message_unref(msg);
-   
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
-    }
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-
-    // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
+    case QUERY_LIST_NAMES:
     {
-        fprintf(stderr, "Argument is not a string!\n");
+        message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                                DBUS_PATH_DBUS,
+                                                DBUS_INTERFACE_DBUS,
+                                                "ListNames");
+        break;
+    }
+
+    case QUERY_ACTIVATABLE_NAMES:
+    {
+        message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                                DBUS_PATH_DBUS,
+                                                DBUS_INTERFACE_DBUS,
+                                                "ListActivatableNames");
+        break;
+    }
+
+    case QUERY_GET_NAME_OWNER:
+    {
+        message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                                DBUS_PATH_DBUS,
+                                                DBUS_INTERFACE_DBUS,
+                                                "GetNameOwner");
+        need_parameter = true;
+        break;
+    }
+
+    case QUERY_GET_CONNECTION_UNIX_USER:
+    {
+        message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                                DBUS_PATH_DBUS,
+                                                DBUS_INTERFACE_DBUS,
+                                                "GetConnectionUnixUser");
+        need_parameter = true;
+        break;
+    }
+
+    case QUERY_GET_CONNECTION_UNIX_PROCESS_ID:
+    {
+        message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                                DBUS_PATH_DBUS,
+                                                DBUS_INTERFACE_DBUS,
+                                                "GetConnectionUnixProcessID");
+        need_parameter = true;
+        break;
+    }
+
+    default:
+        fprintf (stderr, "Query unrecognized.\n");
         return;
     }
 
-    // Should check for type, but assume OK since session bus.
-    dbus_message_iter_get_basic(&args, &name);
-    printf("Name owner: %s\n", name);
-    
-   
-    // free reply and close connection
-    dbus_message_unref(msg);   
-}
-
-/**
- * Get Connexion Unix User
- */
-void getConnectionUnixUser()
-{
-    // Send method call.
-    DBusMessage* msg;
-    DBusMessageIter args;
-    DBusConnection* conn;
-    DBusError err;
-    DBusPendingCall* pending;
-    uint32_t name;
-
-    // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
+    if (message == NULL)
     {
-        fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
-    }
-    if (conn == NULL)
-    {
-        exit(1);
-    }
-
-
-    // create a new method call and check for errors
-    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
-                                       DBUS_PATH_DBUS, // object to call on
-                                       DBUS_INTERFACE_DBUS, // interface to call on
-                                       "GetConnectionUnixUser"); // method name
-
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
-    }
-
-    char* param="org.naquadah.awesome.awful";
-
-    // append arguments
-    dbus_message_iter_init_append(msg, &args);
-    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-
-    // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
-    }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
-    // free message
-    dbus_message_unref(msg);
-   
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
-    }
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-
-    // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_UINT32 != dbus_message_iter_get_arg_type(&args))
-    {
-        fprintf(stderr, "Argument is not a Uint32!\n");
+        fprintf (stderr, "Message creation error.\n");
         return;
     }
 
-    // Should check for type, but assume OK since session bus.
-    dbus_message_iter_get_basic(&args, &name);
-    printf("Name owner: %lu\n", name);
-    
-   
-    // free reply and close connection
-    dbus_message_unref(msg);   
-}
 
-
-/**
- * Get Connexion Unix Process ID
- */
-void getConnectionUnixProcessID()
-{
-    // Send method call.
-    DBusMessage* msg;
-    DBusMessageIter args;
-    DBusConnection* conn;
-    DBusError err;
-    DBusPendingCall* pending;
-    uint32_t name;
-
-    // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
+    if(need_parameter)
     {
-        fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
+        // Append parameter.
+        dbus_message_iter_init_append (message, &args);
+        if (!dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &parameter))
+        {
+            fprintf (stderr, "Out Of Memory!\n");
+            return;
+        }
     }
-    if (conn == NULL)
+
+
+    // Send message and get a handle for a reply.
+    // -1 is default timeout.
+    if (!dbus_connection_send_with_reply (connection, message, &pending, -1))
     {
-        exit(1);
+        fprintf (stderr, "Out Of Memory!\n");
+        return;
     }
-
-
-    // create a new method call and check for errors
-    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
-                                       DBUS_PATH_DBUS, // object to call on
-                                       DBUS_INTERFACE_DBUS, // interface to call on
-                                       "GetConnectionUnixProcessID"); // method name
-
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
-    }
-
-    char* param="org.naquadah.awesome.awful";
-
-    // append arguments
-    dbus_message_iter_init_append(msg, &args);
-    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-
-    // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
-    }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
-    }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
-    // free message
-    dbus_message_unref(msg);
-   
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
-    }
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-
-    // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_UINT32 != dbus_message_iter_get_arg_type(&args))
+    if (pending == NULL)
     {
-        fprintf(stderr, "Argument is not a Uint32!\n");
+        fprintf (stderr, "Pending Call Null\n");
         return;
     }
 
-    // Should check for type, but assume OK since session bus.
-    dbus_message_iter_get_basic(&args, &name);
-    printf("Process ID: %lu\n", name);
-    
-   
+    // Force sending request without waiting.
+    dbus_connection_flush (connection);
+
+    // Free message.
+    dbus_message_unref (message);
+
+    // Block until we recieve a reply.
+    dbus_pending_call_block (pending);
+
+    // Get the reply message.
+    message = dbus_pending_call_steal_reply (pending);
+    if (message == NULL)
+    {
+        fprintf (stderr, "Reply Null\n");
+        return;
+    }
+
+    // Free the pending message handle.
+    dbus_pending_call_unref (pending);
+
+    // Read the arguments.
+    if (!dbus_message_iter_init (message, &args))
+    {
+        fprintf (stderr, "Message has no arguments!\n");
+        return;
+    }
+    else
+    {
+        // TODO: is it useful to report errors here?
+        switch(query)
+        {
+        case QUERY_LIST_NAMES:
+        case QUERY_ACTIVATABLE_NAMES:
+        {
+            if (DBUS_TYPE_ARRAY != dbus_message_iter_get_arg_type (&args))
+            {
+                /* fprintf (stderr, "Argument is not an array!\n"); */
+                return;
+            }
+            
+            /* printf ("Bus names:\n"); */
+            dbus_message_iter_recurse (&args, &subargs);
+
+            while (DBUS_TYPE_STRING == dbus_message_iter_get_arg_type (&subargs))
+            {
+                dbus_message_iter_get_basic (&subargs, &argvalue);
+                printf ("%s\n", (char*) argvalue);
+                dbus_message_iter_next (&subargs);
+            }
+
+            break;
+        }
+
+        case QUERY_GET_NAME_OWNER:
+        {
+            if (DBUS_TYPE_STRING == dbus_message_iter_get_arg_type (&args))
+            {
+                dbus_message_iter_get_basic (&args, &argvalue);
+                printf ("%s\n", (char*) argvalue);
+            }
+            break;
+        }
+
+        case QUERY_GET_CONNECTION_UNIX_USER:
+        case QUERY_GET_CONNECTION_UNIX_PROCESS_ID:
+        {
+            if (DBUS_TYPE_UINT32 == dbus_message_iter_get_arg_type (&args))
+            {
+                dbus_message_iter_get_basic (&args, &argvalue);
+                printf ("%lu\n", (dbus_uint32_t) argvalue);
+            }
+            break;
+        }
+
+        }
+    }
+
     // free reply and close connection
-    dbus_message_unref(msg);   
+    dbus_message_unref (message);
 }
 
 
@@ -689,24 +417,10 @@ void getConnectionUnixProcessID()
 /* } */
 
 
-#ifdef __APPLE__
-#define TIME_FORMAT "%s\t%lu\t%d"
-#else
-#define TIME_FORMAT "%s\t%lu\t%lu"
-#endif
-#define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
-
-enum Flags
-{
-    FLAG_SERIAL = 1,
-    FLAG_REPLY_SERIAL = 2,
-    FLAG_PATH = 4,
-    FLAG_INTERFACE = 8,
-    FLAG_MEMBER = 32,
-    FLAG_ERROR_NAME = 64
-} ;
 
 /**
+ * Members attributes.
+ *
  * TODO: to be completed.
  *
  * TODO: why can signals have destination? D-Bus reference says it is always
@@ -780,63 +494,66 @@ enum Flags
  * DBUS_TYPE_UNIX_FD_AS_STRING
  * DBUS_TYPE_VARIANT_AS_STRING
  */
+#define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
+
+enum Flags
+{
+    FLAG_SERIAL = 1,
+    FLAG_REPLY_SERIAL = 2,
+    FLAG_PATH = 4,
+    FLAG_INTERFACE = 8,
+    FLAG_MEMBER = 32,
+    FLAG_ERROR_NAME = 64
+};
+
 static void
-message_mangler (DBusMessage *message)
+message_mangler (DBusMessage * message)
 {
     struct timeval time_machine;
-    struct tm * time_human;
-    char* type = "Unknown";
-    unsigned int flag=0;
+    struct tm *time_human;
+    char *type = "Unknown";
+    unsigned int flag = 0;
 
     if (gettimeofday (&time_machine, NULL) < 0)
     {
-        perror("TIME");
+        perror ("TIME");
         return;
     }
 
     // Use "localtime" or "gmtime" to get date and time from the elapsed seconds
     // since epoch.
     /* time_human = localtime( &(time_machine.tv_sec) ); */
-    time_human = gmtime( &(time_machine.tv_sec) );
+    time_human = gmtime (&(time_machine.tv_sec));
 
     switch (dbus_message_get_type (message))
     {
 
-        // TODO: check if serial is different / needed for error and method return.
+            // TODO: check if serial is different / needed for error and method return.
 
-    case DBUS_MESSAGE_TYPE_ERROR:
-        type = "Error";
-        flag = FLAG_SERIAL |
-            FLAG_ERROR_NAME |
-            FLAG_REPLY_SERIAL;
-        break;
+        case DBUS_MESSAGE_TYPE_ERROR:
+            type = "Error";
+            flag = FLAG_SERIAL | FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
+            break;
 
-    case DBUS_MESSAGE_TYPE_METHOD_CALL:
-        type = "Method Call";
-        flag = FLAG_SERIAL |
-            FLAG_PATH |
-            FLAG_INTERFACE |
-            FLAG_MEMBER;
-        break;
+        case DBUS_MESSAGE_TYPE_METHOD_CALL:
+            type = "Method Call";
+            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
+            break;
 
-    case DBUS_MESSAGE_TYPE_METHOD_RETURN:
-        type = "Method return";
-        flag= FLAG_SERIAL |
-            FLAG_REPLY_SERIAL;
-        break;
+        case DBUS_MESSAGE_TYPE_METHOD_RETURN:
+            type = "Method return";
+            flag = FLAG_SERIAL | FLAG_REPLY_SERIAL;
+            break;
 
 
-    case DBUS_MESSAGE_TYPE_SIGNAL:
-        type="Signal";
-        flag=FLAG_SERIAL |
-            FLAG_PATH |
-            FLAG_INTERFACE |
-            FLAG_MEMBER;
-        break;
+        case DBUS_MESSAGE_TYPE_SIGNAL:
+            type = "Signal";
+            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
+            break;
 
-    default:
-        printf ("Unknown message.\n");
-        break;
+        default:
+            printf ("Unknown message.\n");
+            break;
     }
 
     // Print
@@ -870,98 +587,115 @@ message_mangler (DBusMessage *message)
 
     // JSON Export
     struct JsonNode *export_object;
-    export_object = json_mkobject();
+    export_object = json_mkobject ();
 
-    struct JsonNode *export_type = json_mkstring(type);
-    json_append_member(export_object, "type", export_type);
+    struct JsonNode *export_type = json_mkstring (type);
+    json_append_member (export_object, "type", export_type);
 
-    struct JsonNode *export_time = json_mkobject();
-    struct JsonNode *export_time_sec = json_mknumber(time_machine.tv_sec);
-    struct JsonNode *export_time_usec = json_mknumber(time_machine.tv_usec);
-    json_append_member(export_time, "sec", export_time_sec);
-    json_append_member(export_time, "usec", export_time_usec);
-    json_append_member(export_object, "time", export_time);
+    struct JsonNode *export_time = json_mkobject ();
+    struct JsonNode *export_time_sec = json_mknumber (time_machine.tv_sec);
+    struct JsonNode *export_time_usec = json_mknumber (time_machine.tv_usec);
+    json_append_member (export_time, "sec", export_time_sec);
+    json_append_member (export_time, "usec", export_time_usec);
+    json_append_member (export_object, "time", export_time);
 
-    struct JsonNode *export_time_human = json_mkobject();
-    struct JsonNode *export_time_human_hour = json_mknumber(time_human->tm_hour);
-    struct JsonNode *export_time_human_min = json_mknumber(time_human->tm_min);
-    struct JsonNode *export_time_human_sec = json_mknumber(time_human->tm_sec);
-    json_append_member(export_time_human, "hour", export_time_human_hour);
-    json_append_member(export_time_human, "min", export_time_human_min);
-    json_append_member(export_time_human, "sec", export_time_human_sec);
-    json_append_member(export_object, "time (human)", export_time_human);
+    struct JsonNode *export_time_human = json_mkobject ();
+    struct JsonNode *export_time_human_hour =
+        json_mknumber (time_human->tm_hour);
+    struct JsonNode *export_time_human_min =
+        json_mknumber (time_human->tm_min);
+    struct JsonNode *export_time_human_sec =
+        json_mknumber (time_human->tm_sec);
+    json_append_member (export_time_human, "hour", export_time_human_hour);
+    json_append_member (export_time_human, "min", export_time_human_min);
+    json_append_member (export_time_human, "sec", export_time_human_sec);
+    json_append_member (export_object, "time (human)", export_time_human);
 
 
-    struct JsonNode *export_sender = json_mkstring(TRAP_NULL_STRING (dbus_message_get_sender (message)));
-    json_append_member(export_object, "sender", export_sender);
+    struct JsonNode *export_sender =
+        json_mkstring (TRAP_NULL_STRING (dbus_message_get_sender (message)));
+    json_append_member (export_object, "sender", export_sender);
 
-    struct JsonNode *export_destination = json_mkstring(TRAP_NULL_STRING (dbus_message_get_destination (message)));
-    json_append_member(export_object, "destination", export_destination);
+    struct JsonNode *export_destination =
+        json_mkstring (TRAP_NULL_STRING
+                       (dbus_message_get_destination (message)));
+    json_append_member (export_object, "destination", export_destination);
 
 
     if (flag & FLAG_SERIAL)
     {
-        struct JsonNode *export_serial = json_mknumber(dbus_message_get_serial (message));
-        json_append_member(export_object, "serial", export_serial);
+        struct JsonNode *export_serial =
+            json_mknumber (dbus_message_get_serial (message));
+        json_append_member (export_object, "serial", export_serial);
     }
 
     if (flag & FLAG_REPLY_SERIAL)
     {
-        struct JsonNode *export_reply_serial = json_mknumber(dbus_message_get_reply_serial (message));
-        json_append_member(export_object, "reply_serial", export_reply_serial);
+        struct JsonNode *export_reply_serial =
+            json_mknumber (dbus_message_get_reply_serial (message));
+        json_append_member (export_object, "reply_serial",
+                            export_reply_serial);
     }
 
     if (flag & FLAG_PATH)
     {
         // TRAP_NULL_STRING is not needed here if specification is correctly handled.
-        struct JsonNode *export_path = json_mkstring(TRAP_NULL_STRING (dbus_message_get_path (message)));
-        json_append_member(export_object, "path", export_path);
+        struct JsonNode *export_path =
+            json_mkstring (TRAP_NULL_STRING
+                           (dbus_message_get_path (message)));
+        json_append_member (export_object, "path", export_path);
     }
 
     if (flag & FLAG_INTERFACE)
     {
         // Interface is optional for method calls.
-        struct JsonNode *export_interface = json_mkstring(TRAP_NULL_STRING (dbus_message_get_interface (message)));
-        json_append_member(export_object, "interface", export_interface);
-   }
+        struct JsonNode *export_interface =
+            json_mkstring (TRAP_NULL_STRING
+                           (dbus_message_get_interface (message)));
+        json_append_member (export_object, "interface", export_interface);
+    }
 
     if (flag & FLAG_MEMBER)
     {
-        struct JsonNode *export_member = json_mkstring(TRAP_NULL_STRING (dbus_message_get_member (message)));
-        json_append_member(export_object, "member", export_member);
+        struct JsonNode *export_member =
+            json_mkstring (TRAP_NULL_STRING
+                           (dbus_message_get_member (message)));
+        json_append_member (export_object, "member", export_member);
     }
 
     if (flag & FLAG_ERROR_NAME)
     {
         // TRAP_NULL_STRING is not needed here if specification is correctly handled.
-        struct JsonNode *export_error_name = json_mkstring(TRAP_NULL_STRING (dbus_message_get_error_name (message)));
-        json_append_member(export_object, "error_name", export_error_name);
+        struct JsonNode *export_error_name =
+            json_mkstring (TRAP_NULL_STRING
+                           (dbus_message_get_error_name (message)));
+        json_append_member (export_object, "error_name", export_error_name);
     }
 
-    FILE* export_file;
+    FILE *export_file;
 
     // Binary mode is useless on POSIX.
-    export_file  = fopen(TEMPFILE,"a");
-    if (access(TEMPFILE, W_OK) != 0)
+    export_file = fopen (TEMPFILE, "a");
+    if (access (TEMPFILE, W_OK) != 0)
     {
-        perror(TEMPFILE);
+        perror (TEMPFILE);
         return;
     }
 
 
-    char * tmp=json_stringify(export_object,"    ");
-    fwrite(tmp, sizeof(char), strlen(tmp), export_file);
-    fwrite("\n", sizeof(char), 1, export_file);
+    char *tmp = json_stringify (export_object, "    ");
+    fwrite (tmp, sizeof (char), strlen (tmp), export_file);
+    fwrite ("\n", sizeof (char), 1, export_file);
 
     // Clean
-    free(tmp);
-    json_delete(export_object);
-    fclose(export_file);
+    free (tmp);
+    json_delete (export_object);
+    fclose (export_file);
 }
 
 // TODO: stolen from dbus-print-message.c. Rewrite?
 static void
-print_iter (DBusMessageIter *iter)
+print_iter (DBusMessageIter * iter)
 {
     do
     {
@@ -969,225 +703,231 @@ print_iter (DBusMessageIter *iter)
 
         if (type == DBUS_TYPE_INVALID)
             break;
-      
+
         switch (type)
         {
-        case DBUS_TYPE_STRING:
-        {
-            char *val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("string \"");
-            printf ("%s", val);
-            printf ("\"\n");
-            break;
-        }
-
-        case DBUS_TYPE_SIGNATURE:
-        {
-            char *val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("signature \"");
-            printf ("%s", val);
-            printf ("\"\n");
-            break;
-        }
-
-        case DBUS_TYPE_OBJECT_PATH:
-        {
-            char *val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("object path \"");
-            printf ("%s", val);
-            printf ("\"\n");
-            break;
-        }
-
-        case DBUS_TYPE_INT16:
-        {
-            dbus_int16_t val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("int16 %d\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_UINT16:
-        {
-            dbus_uint16_t val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("uint16 %u\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_INT32:
-        {
-            dbus_int32_t val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("int32 %d\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_UINT32:
-        {
-            dbus_uint32_t val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("uint32 %u\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_INT64:
-        {
-            dbus_int64_t val;
-            dbus_message_iter_get_basic (iter, &val);
-#ifdef DBUS_INT64_PRINTF_MODIFIER
-            printf ("int64 %" DBUS_INT64_PRINTF_MODIFIER "d\n", val);
-#else
-            printf ("int64 (omitted)\n");
-#endif
-            break;
-        }
-
-        case DBUS_TYPE_UINT64:
-        {
-            dbus_uint64_t val;
-            dbus_message_iter_get_basic (iter, &val);
-#ifdef DBUS_INT64_PRINTF_MODIFIER
-            printf ("uint64 %" DBUS_INT64_PRINTF_MODIFIER "u\n", val);
-#else
-            printf ("uint64 (omitted)\n");
-#endif
-            break;
-        }
-
-        case DBUS_TYPE_DOUBLE:
-        {
-            double val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("double %g\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_BYTE:
-        {
-            unsigned char val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("byte %d\n", val);
-            break;
-        }
-
-        case DBUS_TYPE_BOOLEAN:
-        {
-            dbus_bool_t val;
-            dbus_message_iter_get_basic (iter, &val);
-            printf ("boolean %s\n", val ? "true" : "false");
-            break;
-        }
-
-        case DBUS_TYPE_VARIANT:
-        {
-            DBusMessageIter subiter;
-
-            dbus_message_iter_recurse (iter, &subiter);
-
-            printf ("variant ");
-            print_iter (&subiter);
-            break;
-        }
-        case DBUS_TYPE_ARRAY:
-        {
-            // TODO: needs some testing.
-
-            int array_type;
-            DBusMessageIter subiter;
-
-            int array_len;
-            DBusBasicValue* array;
-
-            dbus_message_iter_recurse (iter, &subiter);
-            array_type = dbus_message_iter_get_arg_type (&subiter);
-            
-            if (dbus_type_is_fixed(array_type) == FALSE)
-            {
-                // Not fixed.
-                printf("[");
-                while (array_type != DBUS_TYPE_INVALID)
+            case DBUS_TYPE_STRING:
                 {
-                    print_iter (&subiter);
+                    char *val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("string \"");
+                    printf ("%s", val);
+                    printf ("\"\n");
+                    break;
+                }
 
-                    dbus_message_iter_next (&subiter);
+            case DBUS_TYPE_SIGNATURE:
+                {
+                    char *val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("signature \"");
+                    printf ("%s", val);
+                    printf ("\"\n");
+                    break;
+                }
+
+            case DBUS_TYPE_OBJECT_PATH:
+                {
+                    char *val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("object path \"");
+                    printf ("%s", val);
+                    printf ("\"\n");
+                    break;
+                }
+
+            case DBUS_TYPE_INT16:
+                {
+                    dbus_int16_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("int16 %d\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_UINT16:
+                {
+                    dbus_uint16_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("uint16 %u\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_INT32:
+                {
+                    dbus_int32_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("int32 %d\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_UINT32:
+                {
+                    dbus_uint32_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("uint32 %u\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_INT64:
+                {
+                    dbus_int64_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+#ifdef DBUS_INT64_PRINTF_MODIFIER
+                    printf ("int64 %" DBUS_INT64_PRINTF_MODIFIER "d\n", val);
+#else
+                    printf ("int64 (omitted)\n");
+#endif
+                    break;
+                }
+
+            case DBUS_TYPE_UINT64:
+                {
+                    dbus_uint64_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+#ifdef DBUS_INT64_PRINTF_MODIFIER
+                    printf ("uint64 %" DBUS_INT64_PRINTF_MODIFIER "u\n", val);
+#else
+                    printf ("uint64 (omitted)\n");
+#endif
+                    break;
+                }
+
+            case DBUS_TYPE_DOUBLE:
+                {
+                    double val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("double %g\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_BYTE:
+                {
+                    unsigned char val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("byte %d\n", val);
+                    break;
+                }
+
+            case DBUS_TYPE_BOOLEAN:
+                {
+                    dbus_bool_t val;
+                    dbus_message_iter_get_basic (iter, &val);
+                    printf ("boolean %s\n", val ? "true" : "false");
+                    break;
+                }
+
+            case DBUS_TYPE_VARIANT:
+                {
+                    DBusMessageIter subiter;
+
+                    dbus_message_iter_recurse (iter, &subiter);
+
+                    printf ("variant ");
+                    print_iter (&subiter);
+                    break;
+                }
+            case DBUS_TYPE_ARRAY:
+                {
+                    // TODO: needs some testing.
+
+                    int array_type;
+                    DBusMessageIter subiter;
+
+                    int array_len;
+                    DBusBasicValue *array;
+
+                    dbus_message_iter_recurse (iter, &subiter);
                     array_type = dbus_message_iter_get_arg_type (&subiter);
 
-                    if (array_type != DBUS_TYPE_INVALID)
-                        printf (",");
+                    if (dbus_type_is_fixed (array_type) == FALSE)
+                    {
+                        // Not fixed.
+                        printf ("[");
+                        while (array_type != DBUS_TYPE_INVALID)
+                        {
+                            print_iter (&subiter);
+
+                            dbus_message_iter_next (&subiter);
+                            array_type =
+                                dbus_message_iter_get_arg_type (&subiter);
+
+                            if (array_type != DBUS_TYPE_INVALID)
+                                printf (",");
+                        }
+                        printf ("]\n");
+                    }
+                    else
+                    {
+                        dbus_message_iter_get_fixed_array (&subiter, &array,
+                                                           &array_len);
+                        // FIXME: there may be an issue here with the unknown type.
+                        int i;
+                        printf ("[");
+                        for (i = 0; i < array_len - 1; i++)
+                        {
+                            printf ("%lu,", array[i]);
+                        }
+                        printf ("%lu", array[array_len - 1]);
+                        printf ("]\n");
+                    }
+
+                    break;
                 }
-                printf("]\n");
-            }
-            else
-            {
-                dbus_message_iter_get_fixed_array (&subiter, &array, &array_len);
-                // FIXME: there may be an issue here with the unknown type.
-                int i;
-                printf("[");
-                for (i = 0; i < array_len-1; i++)
+            case DBUS_TYPE_DICT_ENTRY:
                 {
-                    printf("%lu,",array[i]);
+                    DBusMessageIter subiter;
+
+                    dbus_message_iter_recurse (iter, &subiter);
+
+                    printf ("dict entry(\n");
+                    print_iter (&subiter);
+                    dbus_message_iter_next (&subiter);
+                    print_iter (&subiter);
+                    printf (")\n");
+                    break;
                 }
-                printf("%lu",array[array_len-1]);
-                printf("]\n");
-            }
 
-            break;
-        }
-        case DBUS_TYPE_DICT_ENTRY:
-        {
-            DBusMessageIter subiter;
+            case DBUS_TYPE_STRUCT:
+                {
+                    int current_type;
+                    DBusMessageIter subiter;
 
-            dbus_message_iter_recurse (iter, &subiter);
+                    dbus_message_iter_recurse (iter, &subiter);
 
-            printf("dict entry(\n");
-            print_iter (&subiter);
-            dbus_message_iter_next (&subiter);
-            print_iter (&subiter);
-            printf(")\n");
-            break;
-        }
-	    
-        case DBUS_TYPE_STRUCT:
-        {
-            int current_type;
-            DBusMessageIter subiter;
+                    printf ("struct {\n");
+                    while ((current_type =
+                            dbus_message_iter_get_arg_type (&subiter)) !=
+                           DBUS_TYPE_INVALID)
+                    {
+                        print_iter (&subiter);
+                        dbus_message_iter_next (&subiter);
+                        if (dbus_message_iter_get_arg_type (&subiter) !=
+                            DBUS_TYPE_INVALID)
+                            printf (",");
+                    }
+                    printf ("}\n");
+                    break;
+                }
 
-            dbus_message_iter_recurse (iter, &subiter);
+            case DBUS_TYPE_UNIX_FD:
+                {
+                    // TODO: print something?
+                    printf ("Unix FD.\n");
+                    break;
+                }
 
-            printf("struct {\n");
-            while ((current_type = dbus_message_iter_get_arg_type (&subiter)) != DBUS_TYPE_INVALID)
-            {
-                print_iter (&subiter);
-                dbus_message_iter_next (&subiter);
-                if (dbus_message_iter_get_arg_type (&subiter) != DBUS_TYPE_INVALID)
-                    printf (",");
-            }
-            printf("}\n");
-            break;
-        }
-	    
-        case DBUS_TYPE_UNIX_FD:
-        {
-            // TODO: print something?
-            printf("Unix FD.\n");
-            break;
-        }
+            case DBUS_TYPE_INVALID:
+                {
+                    printf ("Invalid argument.\n");
+                    break;
+                }
 
-        case DBUS_TYPE_INVALID:
-        {
-            printf("Invalid argument.\n");
-            break;
+            default:
+                printf ("Warning: (%c) out of specification!\n", type);
+                break;
         }
-	    
-        default:
-            printf ("Warning: (%c) out of specification!\n", type);
-            break;
-        }
-    } while (dbus_message_iter_next (iter));
+    }
+    while (dbus_message_iter_next (iter));
 }
 
 
@@ -1195,25 +935,28 @@ print_iter (DBusMessageIter *iter)
 /**
  * Eavesdrop messages and store them internally.
  */
-static void spy(/* char* param */)
+static void
+spy ( /* char* param */ )
 {
-    DBusMessage* msg;
+    DBusMessage *msg;
     DBusMessageIter args;
-    DBusConnection* conn;
+    DBusConnection *conn;
     DBusError err;
 
     char filter[FILTER_SIZE];
 
     // Initialise the errors API.
-    dbus_error_init(&err);
-   
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set ( &err ) ) {
-        fprintf(stderr, "Connection Error (%s)\n", err.message);
-        dbus_error_free(&err);
+    dbus_error_init (&err);
+
+    conn = dbus_bus_get (DBUS_BUS_SESSION, &err);
+    if (dbus_error_is_set (&err))
+    {
+        fprintf (stderr, "Connection Error (%s)\n", err.message);
+        dbus_error_free (&err);
     }
-    if (conn == NULL) {
-        exit(1);
+    if (conn == NULL)
+    {
+        exit (1);
     }
 
     // Register name on bus.
@@ -1233,41 +976,42 @@ static void spy(/* char* param */)
      * -error
      */
     /* snprintf(filter, FILTER_SIZE, "%s","type='method_call'"); */
-    snprintf(filter, FILTER_SIZE, "%s","eavesdrop=true");
+    snprintf (filter, FILTER_SIZE, "%s", "eavesdrop=true");
 
-    dbus_bus_add_match(conn, filter, &err); // see messages from the given interface
-    dbus_connection_flush(conn);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Match Error (%s)\n", err.message);
-        exit(1);
+    dbus_bus_add_match (conn, filter, &err);    // see messages from the given interface
+    dbus_connection_flush (conn);
+    if (dbus_error_is_set (&err))
+    {
+        fprintf (stderr, "Match Error (%s)\n", err.message);
+        exit (1);
     }
 
-    printf("Match rule sent.\n");
-    printf("### Filter: %s\n",filter);
+    printf ("Match rule sent.\n");
+    printf ("### Filter: %s\n", filter);
 
     // TEMP: arbitrary limit.
     /* int i; */
     /* for ( i=0 ; i<100 ; i++ ) */
-    for ( ; ;  )
+    for (;;)
     {
         // non blocking read of the next available message
-        dbus_connection_read_write_dispatch(conn, -1);
-        msg = dbus_connection_pop_message(conn);
+        dbus_connection_read_write_dispatch (conn, -1);
+        msg = dbus_connection_pop_message (conn);
 
-        if(msg != NULL)
+        if (msg != NULL)
         {
             message_mangler (msg);
 
             // Read the arguments.
-            if (dbus_message_iter_init(msg, &args))
-                print_iter(&args);
-      
+            if (dbus_message_iter_init (msg, &args))
+                print_iter (&args);
+
             /* // free the message */
-            dbus_message_unref(msg);
+            dbus_message_unref (msg);
         }
     }
 
-    dbus_connection_unref(conn);
+    dbus_connection_unref (conn);
 }
 
 /**
@@ -1292,22 +1036,23 @@ static void spy(/* char* param */)
  *   </interface>
  * </node>
  */
-void xmlparser(char* source)
+void
+xmlparser (char *source)
 {
-    char* token;
+    char *token;
 
-    char* property; // Name, Type, Direction 
-    char* value; // Property value
+    char *property;             // Name, Type, Direction 
+    char *value;                // Property value
 
     char *saveptr1, *saveptr2, *saveptr3;
 
     // Skip header on first iteration.
-    strtok_r(source, XML_DELIMS_NODES, &saveptr1);
+    strtok_r (source, XML_DELIMS_NODES, &saveptr1);
 
     // Node slice
-    for ( ; ; )
+    for (;;)
     {
-        token = strtok_r(NULL, XML_DELIMS_NODES, &saveptr1);
+        token = strtok_r (NULL, XML_DELIMS_NODES, &saveptr1);
 
         if (token == NULL)
             break;
@@ -1324,169 +1069,174 @@ void xmlparser(char* source)
         /* puts("=============================================================================="); */
 
         // Node Type
-        token = strtok_r(token, XML_DELIMS_PROPERTIES, &saveptr2);
-        if (token == NULL) // Happens if node has spaces only.
+        token = strtok_r (token, XML_DELIMS_PROPERTIES, &saveptr2);
+        if (token == NULL)      // Happens if node has spaces only.
             continue;
 
-        if (strcmp(token, XML_NODE_OBJECT) == 0)
-            puts("Create object");
-        else if (strcmp(token, XML_NODE_INTERFACE) == 0)
-            puts("Create interface");
-        else if (strcmp(token, XML_NODE_METHOD) == 0)
-            puts("Create method");
-        else if (strcmp(token, XML_NODE_SIGNAL) == 0)
-            puts("Create signal");
-        else if (strcmp(token, XML_NODE_ARG) == 0)
-            puts("Create arg");
-        else // Should never happen if input is as expected.
+        if (strcmp (token, XML_NODE_OBJECT) == 0)
+            puts ("Create object");
+        else if (strcmp (token, XML_NODE_INTERFACE) == 0)
+            puts ("Create interface");
+        else if (strcmp (token, XML_NODE_METHOD) == 0)
+            puts ("Create method");
+        else if (strcmp (token, XML_NODE_SIGNAL) == 0)
+            puts ("Create signal");
+        else if (strcmp (token, XML_NODE_ARG) == 0)
+            puts ("Create arg");
+        else                    // Should never happen if input is as expected.
         {
-            printf("ERROR2: could not recognize token (%s)\n",token);
+            printf ("ERROR2: could not recognize token (%s)\n", token);
             break;
         }
 
         // Properties
-        for ( ; ; )
+        for (;;)
         {
-            token = strtok_r(NULL, XML_DELIMS_PROPERTIES, &saveptr2);
+            token = strtok_r (NULL, XML_DELIMS_PROPERTIES, &saveptr2);
 
             if (token == NULL)
                 break;
 
-            property = strtok_r(token, XML_DELIMS_VALUES, &saveptr3);
-            if (property == NULL) // Shoud never happen.
+            property = strtok_r (token, XML_DELIMS_VALUES, &saveptr3);
+            if (property == NULL)       // Shoud never happen.
                 break;
             // Skip closing '/'.
             if (property[0] == '/')
                 continue;
 
-            value = strtok_r(NULL, XML_DELIMS_VALUES, &saveptr3);
+            value = strtok_r (NULL, XML_DELIMS_VALUES, &saveptr3);
             if (value == NULL)
                 continue;
 
-            if (strcmp(property, XML_PROPERTY_NAME) == 0)
+            if (strcmp (property, XML_PROPERTY_NAME) == 0)
                 printf ("\tName: %s\n", value);
-            else if (strcmp(property, XML_PROPERTY_DIRECTION) == 0)
+            else if (strcmp (property, XML_PROPERTY_DIRECTION) == 0)
                 printf ("\tDirection: %s\n", value);
-            else if (strcmp(property, XML_PROPERTY_TYPE) == 0)
+            else if (strcmp (property, XML_PROPERTY_TYPE) == 0)
             {
                 printf ("\tType: ");
 
-                int len=strlen(value);
-                int i,j;
+                int len = strlen (value);
+                int i, j;
 
                 for (i = 0; i < len; i++)
                 {
-                    for (j=0; xml_value_type_table[j].key != '\0'; j++)
+                    for (j = 0; xml_value_type_table[j].key != '\0'; j++)
                     {
                         if (xml_value_type_table[j].key == value[i])
                         {
-                            printf ("%s ", xml_value_type_table[j].value );
+                            printf ("%s ", xml_value_type_table[j].value);
                             break;
                         }
                     }
                     if (xml_value_type_table[j].key == '\0')
                     {
-                        puts("");
-                        printf ("==> ERROR: Type char (%c) not known.", value[i] );
-                        break;    
+                        puts ("");
+                        printf ("==> ERROR: Type char (%c) not known.",
+                                value[i]);
+                        break;
                     }
-                    
+
                 }
-                puts("");
+                puts ("");
             }
             // Should never happen.
             else
             {
-                printf("ERROR3: could not recognize token (%s)\n",token);
+                printf ("ERROR3: could not recognize token (%s)\n", token);
                 break;
             }
         }
     }
 }
 
-void introspect()
+void
+introspect ()
 {
     // Send method call.
-    DBusMessage* msg;
+    DBusMessage *msg;
     DBusMessageIter args;
     /* DBusMessageIter name_list; */
-    DBusConnection* conn;
+    DBusConnection *conn;
     DBusError err;
-    DBusPendingCall* pending;
-    char* name;
+    DBusPendingCall *pending;
+    char *name;
 
     // Init error
-    dbus_error_init(&err);
-        
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if ( dbus_error_is_set(&err))
+    dbus_error_init (&err);
+
+    conn = dbus_bus_get (DBUS_BUS_SESSION, &err);
+    if (dbus_error_is_set (&err))
     {
         fprintf (stderr, "Connection Error (%s)", err.message);
-        dbus_error_free(&err);
+        dbus_error_free (&err);
     }
     if (conn == NULL)
     {
-        exit(1);
+        exit (1);
     }
 
     // create a new method call and check for errors
-    msg = dbus_message_new_method_call(
-        DBUS_SERVICE_DBUS, // target for the method call object to call on.
-        /* "org.naquadah.awesome.awful", */
-        // TODO: Useless?????
-        DBUS_PATH_DBUS,
-        /* DBUS_INTERFACE_DBUS, // interface to call on */
-        "org.freedesktop.DBus.Introspectable", // interface to call on
-        "Introspect"); // method name
+    msg = dbus_message_new_method_call (DBUS_SERVICE_DBUS,      // target for the method call object to call on.
+                                        /* "org.naquadah.awesome.awful", */
+                                        // TODO: Useless?????
+                                        DBUS_PATH_DBUS,
+                                        /* DBUS_INTERFACE_DBUS, // interface to call on */
+                                        "org.freedesktop.DBus.Introspectable",  // interface to call on
+                                        "Introspect");  // method name
 
-    if (NULL == msg) { 
-        fprintf(stderr, "Message Null\n");
-        exit(1);
+    if (NULL == msg)
+    {
+        fprintf (stderr, "Message Null\n");
+        exit (1);
     }
 
     // send message and get a handle for a reply
-    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-        fprintf(stderr, "Out Of Memory!\n"); 
-        exit(1);
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1))
+    {                           // -1 is default timeout
+        fprintf (stderr, "Out Of Memory!\n");
+        exit (1);
     }
-    if (NULL == pending) { 
-        fprintf(stderr, "Pending Call Null\n"); 
-        exit(1); 
+    if (NULL == pending)
+    {
+        fprintf (stderr, "Pending Call Null\n");
+        exit (1);
     }
-    dbus_connection_flush(conn);
-   
-    printf("Request Sent\n");
-   
+    dbus_connection_flush (conn);
+
+    printf ("Request Sent\n");
+
     // free message
-    dbus_message_unref(msg);
-   
+    dbus_message_unref (msg);
+
     // block until we recieve a reply
-    dbus_pending_call_block(pending);
+    dbus_pending_call_block (pending);
 
     // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if (NULL == msg) {
-        fprintf(stderr, "Reply Null\n"); 
-        exit(1); 
+    msg = dbus_pending_call_steal_reply (pending);
+    if (NULL == msg)
+    {
+        fprintf (stderr, "Reply Null\n");
+        exit (1);
     }
 
     // free the pending message handle
-    dbus_pending_call_unref(pending);
-    
+    dbus_pending_call_unref (pending);
+
     // read the parameters
-    if (!dbus_message_iter_init(msg, &args))
-        fprintf(stderr, "Message has no arguments!\n");
-    else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
-        fprintf(stderr, "Argument is not a string!\n");
+    if (!dbus_message_iter_init (msg, &args))
+        fprintf (stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type (&args))
+        fprintf (stderr, "Argument is not a string!\n");
 
-    dbus_message_iter_get_basic(&args, &name);
+    dbus_message_iter_get_basic (&args, &name);
 
-    printf("Intro: %s\n", name);
-    xmlparser(name);
+    printf ("Intro: %s\n", name);
+    xmlparser (name);
 
     // free reply and close connection
-    dbus_message_unref(msg);   
-    
+    dbus_message_unref (msg);
+
 }
 
 /**
@@ -1496,7 +1246,7 @@ static int
 answer_to_connection (void *cls, struct MHD_Connection *connection,
                       const char *url, const char *method,
                       const char *version, const char *upload_data,
-                      size_t *upload_data_size, void **con_cls)
+                      size_t * upload_data_size, void **con_cls)
 {
     // TODO: add to logfile.
     printf ("URL=[%s]\n", url);
@@ -1504,45 +1254,45 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
     printf ("VERSION=[%s]\n", version);
     printf ("DATA=[%s]\n", upload_data);
     printf ("DATA SIZE=[%lu]\n", *upload_data_size);
-    
+
     FILE *fp;
     char *file_path;
 
-    if (0== strcmp(url,"/"))
+    if (0 == strcmp (url, "/"))
     {
         file_path = "index.html";
     }
     else
     {
-        file_path = malloc(strlen(url)+2 );
-        strcpy(file_path, ".");
-        strcat(file_path ,url);        
+        file_path = malloc (strlen (url) + 2);
+        strcpy (file_path, ".");
+        strcat (file_path, url);
     }
 
-    fp = fopen(file_path, "r") ;
+    fp = fopen (file_path, "r");
 
     size_t read_amount;
     char *page;
-    if (fp==NULL)
+    if (fp == NULL)
     {
-        perror(file_path);
-        page  = "<html><body>Page not found!</body></html>";
-        read_amount=strlen(page);
+        perror (file_path);
+        page = "<html><body>Page not found!</body></html>";
+        read_amount = strlen (page);
         /* return MHD_NO; */
     }
     else
     {
-        fseek(fp, 0, SEEK_END);
-        unsigned long fp_len = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
+        fseek (fp, 0, SEEK_END);
+        unsigned long fp_len = ftell (fp);
+        fseek (fp, 0, SEEK_SET);
 
-        page=malloc( fp_len * sizeof (char) );
-        
-        read_amount = fread( page, sizeof(char), fp_len, fp);
+        page = malloc (fp_len * sizeof (char));
+
+        read_amount = fread (page, sizeof (char), fp_len, fp);
         /* printf ("CHECK =[%lu] ", res ); */
 
-        fclose(fp);
-        
+        fclose (fp);
+
     }
 
     struct MHD_Response *response;
@@ -1550,7 +1300,7 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 
     /* printf ("SIZE=[%lu]\n",strlen(page) ); */
     response =
-        MHD_create_response_from_buffer ( read_amount, (void *) page,
+        MHD_create_response_from_buffer (read_amount, (void *) page,
                                          MHD_RESPMEM_PERSISTENT);
     ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
     MHD_destroy_response (response);
@@ -1567,7 +1317,7 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 
 
 static void
-run_daemon()
+run_daemon ()
 {
     struct MHD_Daemon *daemon;
 
@@ -1577,9 +1327,9 @@ run_daemon()
         return;
 
     // TODO: handle signal and eavesdrop on DBus.
-    for ( ;  ;  )
+    for (;;)
     {
-        sleep(60);
+        sleep (60);
     }
 
     MHD_stop_daemon (daemon);
@@ -1587,20 +1337,20 @@ run_daemon()
     return;
 }
 
-static inline void
-print_help()
+static void
+print_help ()
 {
     printf ("Syntax: %s [-s] [-d] [<param>]\n\n", APPNAME);
 
-    puts("Usage:");
-    puts("  -d : Daemonize.");
-    puts("  -h : Print this help.");
-    puts("  -s : Spy all signals.");
-    puts("  -v : Print version.");
+    puts ("Usage:");
+    puts ("  -d : Daemonize.");
+    puts ("  -h : Print this help.");
+    puts ("  -s : Spy all signals.");
+    puts ("  -v : Print version.");
 }
 
-static inline void
-print_version()
+static void
+print_version ()
 {
     printf ("%s %s\n", APPNAME, VERSION);
     printf ("Copyright © %s %s\n", YEAR, AUTHOR);
@@ -1610,41 +1360,57 @@ print_version()
 }
 
 
-void nice_close(int sig)
+void
+nice_close (int sig)
 {
     printf ("Print this before closing\n");
-    exit(sig);
+    exit (sig);
 }
 
 int
-main(int argc, char** argv)
+main (int argc, char **argv)
 {
     // Fork variables.
-    bool daemonize=false;
-    bool run_spy=false;
-    pid_t pid=1, sid;
+    bool daemonize = false;
+    bool run_spy = false;
+    pid_t pid = 1, sid;
 
     // getopt() variables.
     int c;
-    extern char* optarg;
+    extern char *optarg;
     extern int optind;
     extern int optopt;
 
-    while ( (c=getopt(argc,argv,":dhsv")) != -1)
+    while ((c = getopt (argc, argv, ":adhln:p:svu:")) != -1)
     {
-        switch(c)
+        switch (c)
         {
+        case 'a':
+            queryBus (QUERY_ACTIVATABLE_NAMES, NULL);
+            return 0;
         case 'd':
-            daemonize=true;
-                break;
+            daemonize = true;
+            break;
         case 'h':
-            print_help();
+            print_help ();
+            return 0;
+        case 'l':
+            queryBus (QUERY_LIST_NAMES, NULL);
+            return 0;
+        case 'n':
+            queryBus (QUERY_GET_NAME_OWNER, optarg);
+            return 0;
+        case 'p':
+            queryBus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg);
             return 0;
         case 's':
-            run_spy=true;
+            run_spy = true;
             break;
         case 'v':
-            print_version();
+            print_version ();
+            return 0;
+        case 'u':
+            queryBus (QUERY_GET_CONNECTION_UNIX_USER, optarg);
             return 0;
         case ':':
             printf ("-%c needs an argument.\n", optopt);
@@ -1652,6 +1418,9 @@ main(int argc, char** argv)
         case '?':
             printf ("Unknown argument %c.\n", optopt);
             break;
+        default:
+            print_help();
+            return 0;
         }
     }
 
@@ -1659,24 +1428,27 @@ main(int argc, char** argv)
     if (daemonize == true)
     {
         /* Fork off the parent process */
-        pid = fork();
-        if (pid < 0) {
-            exit(EXIT_FAILURE);
+        pid = fork ();
+        if (pid < 0)
+        {
+            exit (EXIT_FAILURE);
         }
-        if (pid > 0) {
-            exit(EXIT_SUCCESS);
+        if (pid > 0)
+        {
+            exit (EXIT_SUCCESS);
         }
-        
+
         // Change the file mode mask following parameters.
         /* umask(0);        */
-        
+
         /* Create a new SID for the child process */
-        sid = setsid();
-        if (sid < 0) {
+        sid = setsid ();
+        if (sid < 0)
+        {
             /* Log any failure here */
-            exit(EXIT_FAILURE);
+            exit (EXIT_FAILURE);
         }
-        
+
         /* Change the current working directory */
         /* if ((chdir("/")) < 0) { */
         /*     /\* Log any failure here *\/ */
@@ -1684,24 +1456,25 @@ main(int argc, char** argv)
         /* }     */
 
         // TODO: need to log somewhere, otherwise will go to terminal.
-        run_daemon();
+        run_daemon ();
     }
 
 
     struct sigaction act;
     act.sa_handler = nice_close;
-    act.sa_flags=0;
+    act.sa_flags = 0;
 
-    if ((sigemptyset(&act.sa_mask) == -1) ||
-        (sigaction(SIGINT, &act, NULL) == -1)) {
-        perror("Failed to set SIGINT handler");
+    if ((sigemptyset (&act.sa_mask) == -1) ||
+        (sigaction (SIGINT, &act, NULL) == -1))
+    {
+        perror ("Failed to set SIGINT handler");
         return 1;
     }
 
     // Functions.
     if (run_spy == true)
     {
-        spy();
+        spy ();
     }
 
     /* jsonexport(); */
