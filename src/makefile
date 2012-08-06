@@ -11,30 +11,23 @@ include config.mk
 # CFLAGS+=-Wall -Wextra -Wshadow -Winline
 CFLAGS+=-Wall -Wextra -Wshadow -Winline -pedantic -std=c11
 
-# For use of getopt() with -pedantic.
+## For use of getopt() with -pedantic.
 CFLAGS+=-D_XOPEN_SOURCE=700
 # CFLAGS+=-D_ISOC11_SOURCE
 
-LDFLAGS+=-lpcap -ljson
-
+## D-Bus
 CFLAGS+=$$(pkg-config --cflags dbus-1)
 LDFLAGS+=$$(pkg-config --libs dbus-1)
 
-# For JSON
+## For JSON
 CFLAGS+=-I "ccan/json/"
+SRC+=ccan/json/json.c
 
-## Projects options
-# USE_GLIB=false
-# ifeq ($(USE_GLIB),true)
-# 	CFLAGS+=$$(pkg-config --cflags dbus-glib-1)
-# 	LDFLAGS+=$$(pkg-config --libs dbus-glib-1)
-# else
-# 	CFLAGS+=$$(pkg-config --cflags dbus-1)
-# 	LDFLAGS+=$$(pkg-config --libs dbus-1)
-# endif
+## For microhttpd 
+LDFLAGS+=$$(pkg-config --libs libmicrohttpd)
 
 BIN=dahsee
-SRC=dahsee.c ccan/json/json.c
+SRC+=dahsee.c
 OBJ=$(SRC:.c=.o)
 
 all: $(BIN)
@@ -48,3 +41,19 @@ $(BIN): $(OBJ)
 clean:
 	@$(RM) $(BIN) $(OBJ)
 
+
+################################################################################
+## OLD
+
+## Projects options
+# USE_GLIB=false
+# ifeq ($(USE_GLIB),true)
+# 	CFLAGS+=$$(pkg-config --cflags dbus-glib-1)
+# 	LDFLAGS+=$$(pkg-config --libs dbus-glib-1)
+# else
+# 	CFLAGS+=$$(pkg-config --cflags dbus-1)
+# 	LDFLAGS+=$$(pkg-config --libs dbus-1)
+# endif
+
+# LDFLAGS+=-lpcap
+# LDFLAGS+=-ljson ## For use with Jansson.

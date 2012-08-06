@@ -10,6 +10,9 @@ Configuration
 The only required dependency is D-Bus. You will need it for compilation and
 runtime.
 
+Optionally you will need microhttpd (a.k.a. libmicrohttpd) for the Web
+interface.
+
 Building
 --------
 

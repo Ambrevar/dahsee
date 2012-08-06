@@ -5,24 +5,95 @@
  * @brief Dbus monitoring tool
  ******************************************************************************/
 
-#include <dbus/dbus.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
-// Data storage.
-// JSON: Let's use a static json lib here.
-#include "json.h"
-/* #include "ccan/json/json.h" */
-/* #include <json/json.h> */
+#include <dbus/dbus.h>
 
+// Web interface with microhttpd.
+// Needs string.h, stdio.h, stdlib.h
+#include <microhttpd.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+
+#define PORT 7117
+
+// XML support
+#define XML_DELIMS_NODES "<>"
+#define XML_DELIMS_PROPERTIES " "
+#define XML_DELIMS_VALUES "\"="
+
+#define XML_NODE_OBJECT "node"
+#define XML_NODE_SIGNAL "signal"
+#define XML_NODE_METHOD "method"
+#define XML_NODE_INTERFACE "interface"
+#define XML_NODE_ARG "arg"
+
+#define XML_PROPERTY_NAME "name"
+#define XML_PROPERTY_TYPE "type" // ARG only
+#define XML_PROPERTY_DIRECTION "direction" // ARG only
+
+#define XML_VALUE_DIRECTION_IN "in"
+#define XML_VALUE_DIRECTION_OUT "out"
+
+struct xml_dict
+{
+    char key;
+    char* value;
+};
+
+struct xml_dict xml_value_type_table[] = {
+    { 'y', "Byte"         },
+    { 'b', "Boolean"      },
+    { 'n', "Int16"        },
+    { 'q', "Uint16"       },
+    { 'i', "Int32"        },
+    { 'u', "Uint32"       },
+    { 'x', "Int64"        },
+    { 't', "Uint64"       },
+    { 'd', "Double"       },
+    { 's', "String"       },
+    { 'o', "Object Path"  },
+    { 'g', "Signature"    },
+    { 'a', "Array of"     },
+    { '(', "Struct ("     },
+    { ')', ")"            },
+    { 'v', "Variant"      },
+    { '{', "Dict entry {" },
+    { '}', "}"            },
+    { 'h', "Unix fd"      },
+    { '\0', NULL          }
+};
+
+// Reserved. Not used for now according to D-Bus specification.
+// Should be checked for future update.
+/* static xml_value_type_table = { */
+/*     { 'm', "Reserved 1" }, */
+/*     { '*', "Reserved 2" }, */
+/*     { '?', "Reserved 3" }, */
+/*     { '^', "Reserved 41" }, */
+/*     { '&', "Reserved 42" }, */
+/*     { '@', "Reserved 43" }, */
+/*     { '\0', NULL } */
+/* } */
+
+
+// JSON
+// This format is used as internal storage, as well as export.
+// Let's use an embedded implementation here.
+#include "json.h"
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 // TODO: temp vars. Clean later.
 #define SPY_BUS "spy.lair"
@@ -33,15 +104,588 @@
  * Timestamps.
  * time_begin serves as chrono reference.
  * time_end serves as chrono stop.
- * timer_print() is a developper function to show how to use the results.
+ * How to use the results:
+ *
+ *   printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
+ *   printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
+ *
  */
 static struct timeval time_begin;
 static struct timeval time_end;
 
+// TODO: remove later
 static inline void timer_print()
 {
     printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
     printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
+}
+
+
+/**
+ * Web page
+ */
+static int
+answer_to_connection (void *cls, struct MHD_Connection *connection,
+                      const char *url, const char *method,
+                      const char *version, const char *upload_data,
+                      size_t *upload_data_size, void **con_cls)
+{
+    // TODO: add to logfile.
+    printf ("URL=[%s]\n", url);
+    /* printf ("METHOD=[%s]\n", method); */
+    /* printf ("VERSION=[%s]\n", version); */
+    /* printf ("DATA=[%s]\n", upload_data); */
+    /* printf ("DATA SIZE=[%lu]\n", *upload_data_size); */
+    
+    FILE *fp;
+    char *file_path;
+
+    if (0== strcmp(url,"/"))
+    {
+        file_path = "index.html";
+    }
+    else
+    {
+        file_path = malloc(strlen(url)+2 );
+        strcpy(file_path, ".");
+        strcat(file_path ,url);        
+    }
+
+    fp = fopen(file_path, "r") ;
+
+    size_t read_amount;
+    char *page;
+    if (fp==NULL)
+    {
+        perror(file_path);
+        page  = "<html><body>Page not found!</body></html>";
+        read_amount=strlen(page);
+        /* return MHD_NO; */
+    }
+    else
+    {
+        fseek(fp, 0, SEEK_END);
+        unsigned long fp_len = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        page=malloc( fp_len * sizeof (char) );
+        
+        read_amount = fread( page, sizeof(char), fp_len, fp);
+        /* printf ("CHECK =[%lu] ", res ); */
+
+        fclose(fp);
+        
+    }
+
+    struct MHD_Response *response;
+    int ret;
+
+    /* printf ("SIZE=[%lu]\n",strlen(page) ); */
+    response =
+        MHD_create_response_from_buffer ( read_amount, (void *) page,
+                                         MHD_RESPMEM_PERSISTENT);
+    ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
+    MHD_destroy_response (response);
+
+    // TODO: memory leak here. Function needs to be worked out.
+    /* if (0== strcmp(url,"/")) */
+    /* { */
+    /*     free(file_path); */
+    /*     free(page); */
+    /* } */
+
+    return ret;
+}
+
+/**
+ * List names on "session bus".
+ */
+void list()
+{
+    // Send method call.
+    // ListNames on                  
+
+    DBusMessage* msg;
+    DBusMessageIter args;
+    DBusMessageIter name_list;
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    char* name;
+    printf("List on %s, %s, %s\n",
+           DBUS_SERVICE_DBUS,
+           DBUS_PATH_DBUS,
+           DBUS_INTERFACE_DBUS
+        );
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
+                                       DBUS_PATH_DBUS, // object to call on
+                                       DBUS_INTERFACE_DBUS, // interface to call on
+                                       "ListNames"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_ARRAY != dbus_message_iter_get_arg_type(&args))
+        fprintf(stderr, "Argument is not an array!\n");
+    else if (DBUS_TYPE_STRING != dbus_message_iter_get_element_type(&args))
+    {
+        fprintf(stderr,"Element type received: %d\n",
+                dbus_message_iter_get_element_type(&args));
+        fprintf(stderr,"Expected : %d\n", DBUS_TYPE_STRING);
+    }
+
+    dbus_message_iter_recurse(&args, &name_list);
+
+    while (dbus_message_iter_next(&name_list))
+    {
+        // Should check for type, but assume OK since session bus.
+        dbus_message_iter_get_basic(&name_list, &name);
+        printf("Bus name: %s\n", name);
+    }
+   
+    // free reply and close connection
+    dbus_message_unref(msg);   
+}
+
+/**
+ * List activable names on "session bus".
+ */
+void listAct()
+{
+    // Send method call.
+    // ListNames on                  
+
+    DBusMessage* msg;
+    DBusMessageIter args;
+    DBusMessageIter name_list;
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    char* name;
+    printf("List on %s, %s, %s\n",
+           DBUS_SERVICE_DBUS,
+           DBUS_PATH_DBUS,
+           DBUS_INTERFACE_DBUS
+        );
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
+                                       DBUS_PATH_DBUS, // object to call on
+                                       DBUS_INTERFACE_DBUS, // interface to call on
+                                       "ListActivatableNames"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_ARRAY != dbus_message_iter_get_arg_type(&args))
+    {
+        fprintf(stderr, "Argument is not an array!\n");
+        dbus_message_iter_get_basic(&args, &name);
+        printf("Error msg: %s\n", name);
+        return;
+    }
+    else if (DBUS_TYPE_STRING != dbus_message_iter_get_element_type(&args))
+    {
+        fprintf(stderr,"Element type received: %d\n",
+                dbus_message_iter_get_element_type(&args));
+        fprintf(stderr,"Expected : %d\n", DBUS_TYPE_STRING);
+    }
+
+    dbus_message_iter_recurse(&args, &name_list);
+
+    while (dbus_message_iter_next(&name_list))
+    {
+        // Should check for type, but assume OK since session bus.
+        dbus_message_iter_get_basic(&name_list, &name);
+        printf("Bus name: %s\n", name);
+    }
+   
+    // free reply and close connection
+    dbus_message_unref(msg);   
+}
+
+
+/**
+ * Get Name Owner
+ */
+void getNameOwner()
+{
+    // Send method call.
+    // ListNames on                  
+
+    DBusMessage* msg;
+    DBusMessageIter args;
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    char* name;
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
+                                       DBUS_PATH_DBUS, // object to call on
+                                       DBUS_INTERFACE_DBUS, // interface to call on
+                                       "GetNameOwner"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    char* param="org.naquadah.awesome.awful";
+
+    // append arguments
+    dbus_message_iter_init_append(msg, &args);
+    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
+    {
+        fprintf(stderr, "Argument is not a string!\n");
+        return;
+    }
+
+    // Should check for type, but assume OK since session bus.
+    dbus_message_iter_get_basic(&args, &name);
+    printf("Name owner: %s\n", name);
+    
+   
+    // free reply and close connection
+    dbus_message_unref(msg);   
+}
+
+/**
+ * Get Connexion Unix User
+ */
+void getConnectionUnixUser()
+{
+    // Send method call.
+    DBusMessage* msg;
+    DBusMessageIter args;
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    uint32_t name;
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
+                                       DBUS_PATH_DBUS, // object to call on
+                                       DBUS_INTERFACE_DBUS, // interface to call on
+                                       "GetConnectionUnixUser"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    char* param="org.naquadah.awesome.awful";
+
+    // append arguments
+    dbus_message_iter_init_append(msg, &args);
+    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_UINT32 != dbus_message_iter_get_arg_type(&args))
+    {
+        fprintf(stderr, "Argument is not a Uint32!\n");
+        return;
+    }
+
+    // Should check for type, but assume OK since session bus.
+    dbus_message_iter_get_basic(&args, &name);
+    printf("Name owner: %lu\n", name);
+    
+   
+    // free reply and close connection
+    dbus_message_unref(msg);   
+}
+
+
+/**
+ * Get Connexion Unix Process ID
+ */
+void getConnectionUnixProcessID()
+{
+    // Send method call.
+    DBusMessage* msg;
+    DBusMessageIter args;
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    uint32_t name;
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(DBUS_SERVICE_DBUS, // target for the method call
+                                       DBUS_PATH_DBUS, // object to call on
+                                       DBUS_INTERFACE_DBUS, // interface to call on
+                                       "GetConnectionUnixProcessID"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    char* param="org.naquadah.awesome.awful";
+
+    // append arguments
+    dbus_message_iter_init_append(msg, &args);
+    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &param)) {
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_UINT32 != dbus_message_iter_get_arg_type(&args))
+    {
+        fprintf(stderr, "Argument is not a Uint32!\n");
+        return;
+    }
+
+    // Should check for type, but assume OK since session bus.
+    dbus_message_iter_get_basic(&args, &name);
+    printf("Process ID: %lu\n", name);
+    
+   
+    // free reply and close connection
+    dbus_message_unref(msg);   
 }
 
 
@@ -149,9 +793,10 @@ message_mangler (DBusMessage *message)
         return;
     }
 
+    // Use "localtime" or "gmtime" to get date and time from the elapsed seconds
+    // since epoch.
     /* time_human = localtime( &(time_machine.tv_sec) ); */
     time_human = gmtime( &(time_machine.tv_sec) );
-
 
     switch (dbus_message_get_type (message))
     {
@@ -321,7 +966,7 @@ static void spy(/* char* param */)
     DBusMessageIter args;
     DBusConnection* conn;
     DBusError err;
-    char* sigvalue;
+    /* char* sigvalue; */
 
     char filter[FILTER_SIZE];
 
@@ -348,8 +993,8 @@ static void spy(/* char* param */)
     }
 
     // Message filters.
-    /* snprintf(filter, FILTER_SIZE, "%s","type='signal'"); */
-    /* snprintf(filter, FILTER_SIZE, "%s",""); */
+    snprintf(filter, FILTER_SIZE, "%s","type='signal'");
+    snprintf(filter, FILTER_SIZE, "%s","");
 
     dbus_bus_add_match(conn, filter, &err); // see signals from the given interface
     dbus_connection_flush(conn);
@@ -396,6 +1041,246 @@ static void spy(/* char* param */)
     }
 
     dbus_connection_unref(conn);
+}
+
+// TODO: support escaped character for delimiters.
+// Nodes can be
+// 1. Object
+// 2. Interfaces
+// 3. Members (Method or Signal)
+// 4. Args
+
+// Warning: this parser is not exhaustive, this will only work for D-Bus XML
+// Introspection as follows:
+
+/**
+ * <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ * "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+ * <node>
+ *   <interface name="org.freedesktop.DBus.Introspectable">
+ *     <method name="Introspect">
+ *       <arg name="data" direction="out" type="s"/>
+ *     </method>
+ *   </interface>
+ * </node>
+ */
+void xmlparser(char* source)
+{
+    char* token;
+
+    char* property; // Name, Type, Direction 
+    char* value; // Property value
+
+    char *saveptr1, *saveptr2, *saveptr3;
+
+    // Skip header on first iteration.
+    strtok_r(source, XML_DELIMS_NODES, &saveptr1);
+
+    // Node slice
+    for ( ; ; )
+    {
+        token = strtok_r(NULL, XML_DELIMS_NODES, &saveptr1);
+
+        if (token == NULL)
+            break;
+
+        // Skip space between XML nodes.
+        // Warning: this works if there is ONLY one node per line, and '\n' right after it.
+        if (token[0] == '\n')
+            continue;
+
+        // Skip XML closure.
+        if (token[0] == '/')
+            continue;
+
+        /* puts("=============================================================================="); */
+
+        // Node Type
+        token = strtok_r(token, XML_DELIMS_PROPERTIES, &saveptr2);
+        if (token == NULL) // Happens if node has spaces only.
+            continue;
+
+        if (strcmp(token, XML_NODE_OBJECT) == 0)
+            puts("Create object");
+        else if (strcmp(token, XML_NODE_INTERFACE) == 0)
+            puts("Create interface");
+        else if (strcmp(token, XML_NODE_METHOD) == 0)
+            puts("Create method");
+        else if (strcmp(token, XML_NODE_SIGNAL) == 0)
+            puts("Create signal");
+        else if (strcmp(token, XML_NODE_ARG) == 0)
+            puts("Create arg");
+        else // Should never happen if input is as expected.
+        {
+            printf("ERROR2: could not recognize token (%s)\n",token);
+            break;
+        }
+
+        // Properties
+        for ( ; ; )
+        {
+            token = strtok_r(NULL, XML_DELIMS_PROPERTIES, &saveptr2);
+
+            if (token == NULL)
+                break;
+
+            property = strtok_r(token, XML_DELIMS_VALUES, &saveptr3);
+            if (property == NULL) // Shoud never happen.
+                break;
+            // Skip closing '/'.
+            if (property[0] == '/')
+                continue;
+
+            value = strtok_r(NULL, XML_DELIMS_VALUES, &saveptr3);
+            if (value == NULL)
+                continue;
+
+            if (strcmp(property, XML_PROPERTY_NAME) == 0)
+                printf ("\tName: %s\n", value);
+            else if (strcmp(property, XML_PROPERTY_DIRECTION) == 0)
+                printf ("\tDirection: %s\n", value);
+            else if (strcmp(property, XML_PROPERTY_TYPE) == 0)
+            {
+                printf ("\tType: ");
+
+                int len=strlen(value);
+                int i,j;
+
+                for (i = 0; i < len; i++)
+                {
+                    for (j=0; xml_value_type_table[j].key != '\0'; j++)
+                    {
+                        if (xml_value_type_table[j].key == value[i])
+                        {
+                            printf ("%s ", xml_value_type_table[j].value );
+                            break;
+                        }
+                    }
+                    if (xml_value_type_table[j].key == '\0')
+                    {
+                        puts("");
+                        printf ("==> ERROR: Type char (%c) not known.", value[i] );
+                        break;    
+                    }
+                    
+                }
+                puts("");
+            }
+            // Should never happen.
+            else
+            {
+                printf("ERROR3: could not recognize token (%s)\n",token);
+                break;
+            }
+        }
+    }
+}
+
+void introspect()
+{
+    // Send method call.
+    DBusMessage* msg;
+    DBusMessageIter args;
+    /* DBusMessageIter name_list; */
+    DBusConnection* conn;
+    DBusError err;
+    DBusPendingCall* pending;
+    char* name;
+
+    // Init error
+    dbus_error_init(&err);
+        
+    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if ( dbus_error_is_set(&err))
+    {
+        fprintf (stderr, "Connection Error (%s)", err.message);
+        dbus_error_free(&err);
+    }
+    if (conn == NULL)
+    {
+        exit(1);
+    }
+
+    // create a new method call and check for errors
+    msg = dbus_message_new_method_call(
+        DBUS_SERVICE_DBUS, // target for the method call object to call on.
+        /* "org.naquadah.awesome.awful", */
+        // TODO: Useless?????
+        DBUS_PATH_DBUS,
+        /* DBUS_INTERFACE_DBUS, // interface to call on */
+        "org.freedesktop.DBus.Introspectable", // interface to call on
+        "Introspect"); // method name
+
+    if (NULL == msg) { 
+        fprintf(stderr, "Message Null\n");
+        exit(1);
+    }
+
+    // send message and get a handle for a reply
+    if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+        fprintf(stderr, "Out Of Memory!\n"); 
+        exit(1);
+    }
+    if (NULL == pending) { 
+        fprintf(stderr, "Pending Call Null\n"); 
+        exit(1); 
+    }
+    dbus_connection_flush(conn);
+   
+    printf("Request Sent\n");
+   
+    // free message
+    dbus_message_unref(msg);
+   
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if (NULL == msg) {
+        fprintf(stderr, "Reply Null\n"); 
+        exit(1); 
+    }
+
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+    
+    // read the parameters
+    if (!dbus_message_iter_init(msg, &args))
+        fprintf(stderr, "Message has no arguments!\n");
+    else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
+        fprintf(stderr, "Argument is not a string!\n");
+
+    dbus_message_iter_get_basic(&args, &name);
+
+    printf("Intro: %s\n", name);
+    xmlparser(name);
+
+    // free reply and close connection
+    dbus_message_unref(msg);   
+    
+}
+
+
+static void
+run_daemon()
+{
+    struct MHD_Daemon *daemon;
+
+    daemon = MHD_start_daemon (MHD_USE_SELECT_INTERNALLY, PORT, NULL, NULL,
+                               &answer_to_connection, NULL, MHD_OPTION_END);
+    if (NULL == daemon)
+        return;
+
+    // TODO: handle signal.
+    for ( ;  ;  )
+    {
+        sleep(60);
+    }
+
+    MHD_stop_daemon (daemon);
+
+    return;
 }
 
 static inline void
@@ -488,11 +1373,8 @@ main(int argc, char** argv)
         /*     exit(EXIT_FAILURE); */
         /* }     */
 
-        // TODO: implement daemon.
-        for (;;)
-        {
-            sleep(60);
-        }
+        // TODO: need to log somewhere, otherwise will go to terminal.
+        run_daemon();
     }
 
 

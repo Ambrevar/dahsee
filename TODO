@@ -2,14 +2,15 @@
 -Get message timestamp, source and destination.
 -Get details on service, interface, objects.
 -Storage: JSON with internal code.
+-Export report HTML.
+-Stats.
+-Make JSON lib C99 compliant.
+-Web interface.
+
 -Storage: JSON with dynamic jansson link.
 -Storage: PCAP.
--Export report HTML.
 -Export report PDF.
 -Graphs.
--Stats.
 -Kernel tracing tool information? (e.g. strace.)
--Make JSON lib C99 compliant.
 -Curses.
 -GUI.
--Web interface.
