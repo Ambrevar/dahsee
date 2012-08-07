@@ -18,86 +18,19 @@
 
 #include <dbus/dbus.h>
 
+// Options
 static volatile sig_atomic_t doneflag = 0;
+static const char * output_path = "dahsee.log";
+static bool option_force_overwrite = false;
 
-// Web interface with microhttpd.
-// Needs string.h, stdio.h, stdlib.h
-#include <microhttpd.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-
-#define PORT 7117
-
-// XML support
-#define XML_DELIMS_NODES "<>"
-#define XML_DELIMS_PROPERTIES " "
-#define XML_DELIMS_VALUES "\"="
-
-#define XML_NODE_OBJECT "node"
-#define XML_NODE_SIGNAL "signal"
-#define XML_NODE_METHOD "method"
-#define XML_NODE_INTERFACE "interface"
-#define XML_NODE_ARG "arg"
-
-#define XML_PROPERTY_NAME "name"
-#define XML_PROPERTY_TYPE "type"        // ARG only
-#define XML_PROPERTY_DIRECTION "direction"      // ARG only
-
-#define XML_VALUE_DIRECTION_IN "in"
-#define XML_VALUE_DIRECTION_OUT "out"
-
-struct xml_dict
-{
-    char key;
-    char *value;
-};
-
-struct xml_dict dbus_value_type_table[] = {
-    {'y', "Byte"},
-    {'b', "Boolean"},
-    {'n', "Int16"},
-    {'q', "Uint16"},
-    {'i', "Int32"},
-    {'u', "Uint32"},
-    {'x', "Int64"},
-    {'t', "Uint64"},
-    {'d', "Double"},
-    {'s', "String"},
-    {'o', "Object Path"},
-    {'g', "Signature"},
-    {'a', "Array of"},
-    {'(', "Struct ("},
-    {')', ")"},
-    {'v', "Variant"},
-    {'{', "Dict entry {"},
-    {'}', "}"},
-    {'h', "Unix fd"},
-    {'\0', NULL}
-};
-
-// Reserved. Not used for now according to D-Bus specification.
-// Should be checked for future update.
-/* static dbus_value_type_table_extra = { */
-/*     { 'm', "Reserved 1" }, */
-/*     { '*', "Reserved 2" }, */
-/*     { '?', "Reserved 3" }, */
-/*     { '^', "Reserved 41" }, */
-/*     { '&', "Reserved 42" }, */
-/*     { '@', "Reserved 43" }, */
-/*     { '\0', NULL } */
-/* } */
-
-
-// JSON
-// This format is used as internal storage, as well as export.
-// Let's use an embedded implementation here.
-#include "json.h"
-#define JSON_FORMAT "    "
-static uint32_t index = 0;
+// Optional UI support
+#ifdef DAHSEE_UI_WEB
+#include "ui_web.h"
+#endif
 
 /**
- * Timestamps.
+ * Timestamps
+ *
  * time_begin serves as chrono reference.
  * time_end serves as chrono stop.
  * How to use the results:
@@ -106,31 +39,27 @@ static uint32_t index = 0;
  *   printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
  *
  */
+// TODO: not used. Remove?
+/* static struct timeval time_begin; */
+/* static struct timeval time_end; */
+
+// TODO: check Apple support.
 #ifdef __APPLE__
 #    define TIME_FORMAT "%s\t%lu\t%d"
 #else
 #    define TIME_FORMAT "%s\t%lu\t%lu"
 #endif
 
-static struct timeval time_begin;
-static struct timeval time_end;
-
-// TODO: remove later
-static inline void
-timer_print ()
-{
-    printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
-    printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
-}
-
-
-
-/*******************************************************************************
- ******************************************************************************/
-
 /**
  * JSON
+ *
+ * This format is used as internal storage, as well as export.
+ * Let's use an embedded implementation here.
  */
+#include "json.h"
+#define JSON_FORMAT "    "
+static uint32_t index = 0;
+
 /* static void jsonimport() */
 /* { */
 /*     /\* struct json_object *new_obj; *\/ */
@@ -163,6 +92,7 @@ timer_print ()
 
 /*     return; */
 /* } */
+
 
 /**
  * Profile mode (one line print).
@@ -199,28 +129,218 @@ timer_print ()
  */
 
 
-// TODO: temp vars. Clean later.
-/* #define SPY_BUS "spy.lair" */
-/* #define FILTER_SIZE 1024 */
-#define TEMPFILE "temp.json"
-
 void
-JsonPrint(JsonNode *message, const char* path)
+JsonPrint(JsonNode *message, FILE* output)
 {
-    if (access (path, W_OK) != 0)
-    {
-        perror (path);
-        return;
-    }
-    // Binary mode is useless on POSIX.
-    FILE* output = fopen (path, "a");
-
     char *tmp = json_stringify (message, JSON_FORMAT);
     fwrite (tmp, sizeof (char), strlen (tmp), output);
     fwrite ("\n", sizeof (char), 1, output);
 
     free (tmp);
-    fclose (output);
+}
+
+/**
+ * XML support. Since we use JSON internally, XML is not convenient. So we
+ * implement our own 100 lines XML-to-JSON parser.
+ */
+#define XML_DELIMS_NODES "<>"
+#define XML_DELIMS_PROPERTIES " "
+#define XML_DELIMS_VALUES "\"="
+
+#define XML_NODE_OBJECT "node"
+#define XML_NODE_SIGNAL "signal"
+#define XML_NODE_METHOD "method"
+#define XML_NODE_INTERFACE "interface"
+#define XML_NODE_ARG "arg"
+
+#define XML_PROPERTY_NAME "name"
+#define XML_PROPERTY_TYPE "type"        // ARG only
+#define XML_PROPERTY_DIRECTION "direction"      // ARG only
+
+#define XML_VALUE_DIRECTION_IN "in"
+#define XML_VALUE_DIRECTION_OUT "out"
+
+struct xml_dict
+{
+    char key;
+    char *value;
+};
+
+/**
+ * Correspondance table for D-Bus type.
+ *
+ * The extra table is reserved. Not used for now according to D-Bus
+ * specification.  Should be checked for future update of D-Bus specification.
+ *
+ * static dbus_value_type_table_extra = {
+ *     { 'm', "Reserved 1" },
+ *     { '*', "Reserved 2" },
+ *     { '?', "Reserved 3" },
+ *     { '^', "Reserved 41" },
+ *     { '&', "Reserved 42" },
+ *     { '@', "Reserved 43" },
+ *     { '\0', NULL }
+ * }
+ */
+struct xml_dict dbus_value_type_table[] = {
+    {'y', "Byte"},
+    {'b', "Boolean"},
+    {'n', "Int16"},
+    {'q', "Uint16"},
+    {'i', "Int32"},
+    {'u', "Uint32"},
+    {'x', "Int64"},
+    {'t', "Uint64"},
+    {'d', "Double"},
+    {'s', "String"},
+    {'o', "Object Path"},
+    {'g', "Signature"},
+    {'a', "Array of"},
+    {'(', "Struct ("},
+    {')', ")"},
+    {'v', "Variant"},
+    {'{', "Dict entry {"},
+    {'}', "}"},
+    {'h', "Unix fd"},
+    {'\0', NULL}
+};
+
+/**
+ * XML Parser
+ *
+ * TODO: support escaped character for delimiters.
+ *
+ * Nodes can be
+ * 1. Object
+ * 2. Interfaces
+ * 3. Members (Method or Signal)
+ * 4. Args
+ *
+ * Warning: this parser is not exhaustive, this will only work for D-Bus XML
+ * Introspection as follows:
+ *
+ * <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ * "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+ * <node>
+ *   <interface name="org.freedesktop.DBus.Introspectable">
+ *     <method name="Introspect">
+ *       <arg name="data" direction="out" type="s"/>
+ *     </method>
+ *   </interface>
+ * </node>
+ */
+void
+dbus_xml_parser (char *source)
+{
+    char *token;
+
+    char *property;             // Name, Type, Direction 
+    char *value;                // Property value
+
+    char *saveptr1, *saveptr2, *saveptr3;
+
+    // Skip header on first iteration.
+    strtok_r (source, XML_DELIMS_NODES, &saveptr1);
+
+    // Node slice
+    for (;;)
+    {
+        token = strtok_r (NULL, XML_DELIMS_NODES, &saveptr1);
+
+        if (token == NULL)
+            break;
+
+        // Skip space between XML nodes.
+        // Warning: this works if there is ONLY one node per line, and '\n' right after it.
+        if (token[0] == '\n')
+            continue;
+
+        // Skip XML closure.
+        if (token[0] == '/')
+            continue;
+
+        /* puts("=============================================================================="); */
+
+        // Node Type
+        token = strtok_r (token, XML_DELIMS_PROPERTIES, &saveptr2);
+        if (token == NULL)      // Happens if node has spaces only.
+            continue;
+
+        if (strcmp (token, XML_NODE_OBJECT) == 0)
+            puts ("Create object");
+        else if (strcmp (token, XML_NODE_INTERFACE) == 0)
+            puts ("Create interface");
+        else if (strcmp (token, XML_NODE_METHOD) == 0)
+            puts ("Create method");
+        else if (strcmp (token, XML_NODE_SIGNAL) == 0)
+            puts ("Create signal");
+        else if (strcmp (token, XML_NODE_ARG) == 0)
+            puts ("Create arg");
+        else                    // Should never happen if input is as expected.
+        {
+            printf ("ERROR2: could not recognize token (%s)\n", token);
+            break;
+        }
+
+        // Properties
+        for (;;)
+        {
+            token = strtok_r (NULL, XML_DELIMS_PROPERTIES, &saveptr2);
+
+            if (token == NULL)
+                break;
+
+            property = strtok_r (token, XML_DELIMS_VALUES, &saveptr3);
+            if (property == NULL)       // Shoud never happen.
+                break;
+            // Skip closing '/'.
+            if (property[0] == '/')
+                continue;
+
+            value = strtok_r (NULL, XML_DELIMS_VALUES, &saveptr3);
+            if (value == NULL)
+                continue;
+
+            if (strcmp (property, XML_PROPERTY_NAME) == 0)
+                printf ("\tName: %s\n", value);
+            else if (strcmp (property, XML_PROPERTY_DIRECTION) == 0)
+                printf ("\tDirection: %s\n", value);
+            else if (strcmp (property, XML_PROPERTY_TYPE) == 0)
+            {
+                printf ("\tType: ");
+
+                int len = strlen (value);
+                int i, j;
+
+                for (i = 0; i < len; i++)
+                {
+                    for (j = 0; dbus_value_type_table[j].key != '\0'; j++)
+                    {
+                        if (dbus_value_type_table[j].key == value[i])
+                        {
+                            printf ("%s ", dbus_value_type_table[j].value);
+                            break;
+                        }
+                    }
+                    if (dbus_value_type_table[j].key == '\0')
+                    {
+                        puts ("");
+                        printf ("==> ERROR: Type char (%c) not known.",
+                                value[i]);
+                        break;
+                    }
+
+                }
+                puts ("");
+            }
+            // Should never happen.
+            else
+            {
+                printf ("ERROR3: could not recognize token (%s)\n", token);
+                break;
+            }
+        }
+    }
 }
 
 
@@ -449,7 +569,6 @@ queryBus(enum Queries query, char* parameter)
     dbus_message_unref (message);
     dbus_connection_unref (connection);
 }
-
 
 
 /**
@@ -709,7 +828,9 @@ args_mangler (DBusMessageIter * args)
 
 
 /**
- * Create JSON object from message and return it. The created node should be
+ * Message mangler
+ *
+ * Creates JSON object from message and returns it. The created node SHOULD be
  * freed with json_delete(node);
  *
  * Members attributes.
@@ -828,6 +949,9 @@ message_mangler (DBusMessage * message)
             break;
     }
 
+    // TODO: get unique name for sender and destination instead of well-known
+    // names. Well-knwwn names should be an option.
+
     // SENDER
     json_append_member (message_node, "sender",
                         json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_sender (message) )));
@@ -879,7 +1003,7 @@ message_mangler (DBusMessage * message)
 }
 
 /**
- * Eavesdrop messages and store them internally.  Parameter is a user-defined
+ * Eavesdrop messages and store them internally. Parameter is a user-defined
  * filter. Filter syntax is as defined by D-Bus specification. Example:
  *
  *   "type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'"
@@ -943,8 +1067,24 @@ spy(char* filter)
         exit (1);
     }
 
-    // TODO: remove this line later.
+    // TODO: put this line to log later.
     printf ("### Filter: %s\n", eavesfilter);
+
+
+
+    if (option_force_overwrite==false && access (output_path, F_OK) == 0)
+    {
+        perror (output_path);
+        return;
+    }
+
+    // Binary mode is useless on POSIX.
+    FILE* output = fopen ( output_path , "w");
+    if (output==NULL)
+    {
+        perror(output_path);
+        return;
+    }
 
     for (;;)
     {
@@ -955,268 +1095,49 @@ spy(char* filter)
         if (message != NULL)
         {
             JsonNode* message_node = message_mangler (message);
-            JsonPrint(message_node, TEMPFILE);
+
+            JsonPrint(message_node, output);
             json_delete(message_node);
 
             dbus_message_unref (message);
         }
     }
 
+    fclose (output);
     dbus_connection_unref (connection);
 }
 
-/**
- * XML Parser
- *
- * TODO: support escaped character for delimiters.
- *
- * Nodes can be
- * 1. Object
- * 2. Interfaces
- * 3. Members (Method or Signal)
- * 4. Args
- *
- * Warning: this parser is not exhaustive, this will only work for D-Bus XML
- * Introspection as follows:
- *
- * <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
- * "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
- * <node>
- *   <interface name="org.freedesktop.DBus.Introspectable">
- *     <method name="Introspect">
- *       <arg name="data" direction="out" type="s"/>
- *     </method>
- *   </interface>
- * </node>
- */
-void
-dbus_xml_parser (char *source)
-{
-    char *token;
-
-    char *property;             // Name, Type, Direction 
-    char *value;                // Property value
-
-    char *saveptr1, *saveptr2, *saveptr3;
-
-    // Skip header on first iteration.
-    strtok_r (source, XML_DELIMS_NODES, &saveptr1);
-
-    // Node slice
-    for (;;)
-    {
-        token = strtok_r (NULL, XML_DELIMS_NODES, &saveptr1);
-
-        if (token == NULL)
-            break;
-
-        // Skip space between XML nodes.
-        // Warning: this works if there is ONLY one node per line, and '\n' right after it.
-        if (token[0] == '\n')
-            continue;
-
-        // Skip XML closure.
-        if (token[0] == '/')
-            continue;
-
-        /* puts("=============================================================================="); */
-
-        // Node Type
-        token = strtok_r (token, XML_DELIMS_PROPERTIES, &saveptr2);
-        if (token == NULL)      // Happens if node has spaces only.
-            continue;
-
-        if (strcmp (token, XML_NODE_OBJECT) == 0)
-            puts ("Create object");
-        else if (strcmp (token, XML_NODE_INTERFACE) == 0)
-            puts ("Create interface");
-        else if (strcmp (token, XML_NODE_METHOD) == 0)
-            puts ("Create method");
-        else if (strcmp (token, XML_NODE_SIGNAL) == 0)
-            puts ("Create signal");
-        else if (strcmp (token, XML_NODE_ARG) == 0)
-            puts ("Create arg");
-        else                    // Should never happen if input is as expected.
-        {
-            printf ("ERROR2: could not recognize token (%s)\n", token);
-            break;
-        }
-
-        // Properties
-        for (;;)
-        {
-            token = strtok_r (NULL, XML_DELIMS_PROPERTIES, &saveptr2);
-
-            if (token == NULL)
-                break;
-
-            property = strtok_r (token, XML_DELIMS_VALUES, &saveptr3);
-            if (property == NULL)       // Shoud never happen.
-                break;
-            // Skip closing '/'.
-            if (property[0] == '/')
-                continue;
-
-            value = strtok_r (NULL, XML_DELIMS_VALUES, &saveptr3);
-            if (value == NULL)
-                continue;
-
-            if (strcmp (property, XML_PROPERTY_NAME) == 0)
-                printf ("\tName: %s\n", value);
-            else if (strcmp (property, XML_PROPERTY_DIRECTION) == 0)
-                printf ("\tDirection: %s\n", value);
-            else if (strcmp (property, XML_PROPERTY_TYPE) == 0)
-            {
-                printf ("\tType: ");
-
-                int len = strlen (value);
-                int i, j;
-
-                for (i = 0; i < len; i++)
-                {
-                    for (j = 0; dbus_value_type_table[j].key != '\0'; j++)
-                    {
-                        if (dbus_value_type_table[j].key == value[i])
-                        {
-                            printf ("%s ", dbus_value_type_table[j].value);
-                            break;
-                        }
-                    }
-                    if (dbus_value_type_table[j].key == '\0')
-                    {
-                        puts ("");
-                        printf ("==> ERROR: Type char (%c) not known.",
-                                value[i]);
-                        break;
-                    }
-
-                }
-                puts ("");
-            }
-            // Should never happen.
-            else
-            {
-                printf ("ERROR3: could not recognize token (%s)\n", token);
-                break;
-            }
-        }
-    }
-}
-
-/**
- * Web page
- */
-static int
-answer_to_connection (void *cls, struct MHD_Connection *connection,
-                      const char *url, const char *method,
-                      const char *version, const char *upload_data,
-                      size_t * upload_data_size, void **con_cls)
-{
-    // TODO: add to logfile.
-    printf ("URL=[%s]\n", url);
-    printf ("METHOD=[%s]\n", method);
-    printf ("VERSION=[%s]\n", version);
-    printf ("DATA=[%s]\n", upload_data);
-    printf ("DATA SIZE=[%lu]\n", *upload_data_size);
-
-    FILE *fp;
-    char *file_path;
-
-    if (0 == strcmp (url, "/"))
-    {
-        file_path = "index.html";
-    }
-    else
-    {
-        file_path = malloc (strlen (url) + 2);
-        strcpy (file_path, ".");
-        strcat (file_path, url);
-    }
-
-    fp = fopen (file_path, "r");
-
-    size_t read_amount;
-    char *page;
-    if (fp == NULL)
-    {
-        perror (file_path);
-        page = "<html><body>Page not found!</body></html>";
-        read_amount = strlen (page);
-        /* return MHD_NO; */
-    }
-    else
-    {
-        fseek (fp, 0, SEEK_END);
-        unsigned long fp_len = ftell (fp);
-        fseek (fp, 0, SEEK_SET);
-
-        page = malloc (fp_len * sizeof (char));
-
-        read_amount = fread (page, sizeof (char), fp_len, fp);
-        /* printf ("CHECK =[%lu] ", res ); */
-
-        fclose (fp);
-
-    }
-
-    struct MHD_Response *response;
-    int ret;
-
-    /* printf ("SIZE=[%lu]\n",strlen(page) ); */
-    response =
-        MHD_create_response_from_buffer (read_amount, (void *) page,
-                                         MHD_RESPMEM_PERSISTENT);
-    ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
-    MHD_destroy_response (response);
-
-    // TODO: memory leak here. Function needs to be worked out.
-    /* if (0== strcmp(url,"/")) */
-    /* { */
-    /*     free(file_path); */
-    /*     free(page); */
-    /* } */
-
-    return ret;
-}
 
 
 static void
 run_daemon ()
 {
-    struct MHD_Daemon *daemon;
-
-    daemon = MHD_start_daemon (MHD_USE_SELECT_INTERNALLY, PORT, NULL, NULL,
-                               &answer_to_connection, NULL, MHD_OPTION_END);
-    if (NULL == daemon)
-        return;
-
     // TODO: handle signal and eavesdrop on DBus.
     for (;;)
     {
         sleep (60);
     }
 
-    MHD_stop_daemon (daemon);
-
     return;
 }
 
 static void
-print_help ()
+print_help (const char* executable)
 {
-    printf ("Syntax: %s [-a|-d|-h|-i NAME|-l|-n NAME|-p NAME|-s FILTER|-u NAME|-v]\n\n", APPNAME);
+    printf ("Usage: %s ...\n", executable);
 
-    puts ("Usage:");
-    puts ("  -a: List activatable bus names.");
-    puts ("  -d: Daemonize.");
-    puts ("  -h: Print this help.");
-    puts ("  -i: Returns introspection of NAME.");
-    puts ("  -l: List registered bus names.");
-    puts ("  -n: Returns unique name associated to NAME.");
-    puts ("  -p: Returns PID associated to NAME.");
-    puts ("  -s: Spy signals. FILTER syntax follows D-Bus specification. If FILTER=='all', all messages are caught.");
-    puts ("  -u: Returns UID who owns NAME.");
-    puts ("  -v: Print version.");
+    puts ("  -a        List activatable bus names.");
+    puts ("  -d        Daemonize.");
+    puts ("  -f        Force overwriting when output file exists.");
+    puts ("  -h        Print this help.");
+    puts ("  -i NAME   Returns introspection of NAME.");
+    puts ("  -l        List registered bus names.");
+    puts ("  -n NAME   Returns unique name associated to NAME.");
+    puts ("  -o FILE   Write output to FILE (default is stdout).");
+    puts ("  -p        Returns PID associated to NAME.");
+    puts ("  -s FILTER Spy signals. FILTER syntax follows D-Bus specification. If FILTER=='all', all messages are caught.");
+    puts ("  -u NAME   Returns UID who owns NAME.");
+    puts ("  -v        Print version.");
 }
 
 static void
@@ -1263,7 +1184,7 @@ main (int argc, char **argv)
         return 1;
     }
 
-    while ((c = getopt (argc, argv, ":adhi:ln:p:s:vu:")) != -1)
+    while ((c = getopt (argc, argv, ":adfhi:ln:o:p:s:vu:")) != -1)
     {
         switch (c)
         {
@@ -1273,8 +1194,11 @@ main (int argc, char **argv)
         case 'd':
             daemonize = true;
             break;
+        case 'f':
+            option_force_overwrite=true;
+            break;
         case 'h':
-            print_help ();
+            print_help (argv[0]);
             return 0;
         case 'i':
             queryBus (QUERY_INTROSPECT, optarg);
@@ -1285,6 +1209,9 @@ main (int argc, char **argv)
         case 'n':
             queryBus (QUERY_GET_NAME_OWNER, optarg);
             return 0;
+        case 'o':
+            output_path = optarg;
+            break;
         case 'p':
             queryBus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg);
             return 0;
@@ -1304,7 +1231,7 @@ main (int argc, char **argv)
             printf ("Unknown argument %c.\n", optopt);
             break;
         default:
-            print_help();
+            print_help(argv[0]);
             return 0;
         }
     }

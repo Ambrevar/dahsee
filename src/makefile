@@ -23,6 +23,9 @@ LDFLAGS+=$$(pkg-config --libs dbus-1)
 CFLAGS+=-I "ccan/json/"
 SRC+=ccan/json/json.c
 
+## For Web UI
+SRC+=ui_web.c
+
 ## For microhttpd 
 LDFLAGS+=$$(pkg-config --libs libmicrohttpd)
 
