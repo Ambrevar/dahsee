@@ -53,7 +53,7 @@ struct xml_dict
     char *value;
 };
 
-struct xml_dict xml_value_type_table[] = {
+struct xml_dict dbus_value_type_table[] = {
     {'y', "Byte"},
     {'b', "Boolean"},
     {'n', "Int16"},
@@ -78,7 +78,7 @@ struct xml_dict xml_value_type_table[] = {
 
 // Reserved. Not used for now according to D-Bus specification.
 // Should be checked for future update.
-/* static xml_value_type_table = { */
+/* static dbus_value_type_table_extra = { */
 /*     { 'm', "Reserved 1" }, */
 /*     { '*', "Reserved 2" }, */
 /*     { '?', "Reserved 3" }, */
@@ -355,6 +355,7 @@ queryBus(int query, char* parameter)
 
     // free reply and close connection
     dbus_message_unref (message);
+    dbus_connection_unref (connection);
 }
 
 
@@ -436,7 +437,7 @@ queryBus(int query, char* parameter)
  *
  * TODO: to be completed.
  *
- * TODO: why can signals have destination? D-Bus reference says it is always
+ * TODO: why can signals have destination? D-Bus reference says they are always
  * broadcasted.
  *
  * All messages have:
@@ -943,88 +944,96 @@ print_iter (DBusMessageIter * iter)
     while (dbus_message_iter_next (iter));
 }
 
-
-
 /**
- * Eavesdrop messages and store them internally.
+ * Eavesdrop messages and store them internally.  Parameter is a user-defined
+ * filter. Filter syntax is as defined by D-Bus specification. Example:
+ *
+ *   "type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'"
+ *
+ * If filter=="all", then all messages are handled.
  */
-static void
-spy ( /* char* param */ )
+
+#define EAVES "eavesdrop=true"
+
+void
+spy(char* filter)
 {
-    DBusMessage *msg;
+    DBusConnection *connection;
+    DBusError error;
+
+    DBusMessage *message = NULL;
     DBusMessageIter args;
-    DBusConnection *conn;
-    DBusError err;
 
-    char filter[FILTER_SIZE];
 
-    // Initialise the errors API.
-    dbus_error_init (&err);
-
-    conn = dbus_bus_get (DBUS_BUS_SESSION, &err);
-    if (dbus_error_is_set (&err))
+    // Should never happen;
+    if (filter == NULL)
     {
-        fprintf (stderr, "Connection Error (%s)\n", err.message);
-        dbus_error_free (&err);
-    }
-    if (conn == NULL)
-    {
-        exit (1);
+        return;
     }
 
-    // Register name on bus.
-    // Useless ?
-    /* dbus_bus_request_name(conn, SPY_BUS, DBUS_NAME_FLAG_REPLACE_EXISTING , &err); */
-    /* if (dbus_error_is_set(&err)) { */
-    /*     fprintf(stderr, "Name Error (%s)\n", err.message); */
-    /*     dbus_error_free(&err); */
-    /* } */
+    if (strcmp(filter, "all")==0)
+    {
+        filter = "";
+    }
 
     /**
-     *  Message filters.
+     * Message filters.
      * Type are among:
      * -signal
      * -method_call
      * -method_return
      * -error
      */
-    /* snprintf(filter, FILTER_SIZE, "%s","type='method_call'"); */
-    snprintf (filter, FILTER_SIZE, "%s", "eavesdrop=true");
+    // Note: eavesdropping role is being prepended so that is can be turned off
+    // by user in the filter.
+    size_t filterlength = strlen(EAVES) + 1 + strlen(filter) + 1;
+    char* eavesfilter = malloc( filterlength * sizeof(char) );
+    snprintf( eavesfilter, filterlength, "%s,%s", EAVES, filter);
 
-    dbus_bus_add_match (conn, filter, &err);    // see messages from the given interface
-    dbus_connection_flush (conn);
-    if (dbus_error_is_set (&err))
+    // Init
+    dbus_error_init (&error);
+
+    connection = dbus_bus_get (DBUS_BUS_SESSION, &error);
+    if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Match Error (%s)\n", err.message);
+        fprintf (stderr, "Connection Error (%s)", error.message);
+        dbus_error_free (&error);
+    }
+    if (connection == NULL)
+        exit (1);
+
+    dbus_bus_add_match (connection, eavesfilter, &error);
+    // TODO: useless here?
+    dbus_connection_flush (connection);
+    if (dbus_error_is_set (&error))
+    {
+        fprintf (stderr, "Match Error (%s)\n", error.message);
         exit (1);
     }
 
-    printf ("Match rule sent.\n");
-    printf ("### Filter: %s\n", filter);
+    printf ("### Filter: %s\n", eavesfilter);
 
-    // TEMP: arbitrary limit.
-    /* int i; */
-    /* for ( i=0 ; i<100 ; i++ ) */
     for (;;)
     {
-        // non blocking read of the next available message
-        dbus_connection_read_write_dispatch (conn, -1);
-        msg = dbus_connection_pop_message (conn);
+        // Blocking read (-1) of the next available message.
+        dbus_connection_read_write_dispatch (connection, -1);
+        message = dbus_connection_pop_message (connection);
 
-        if (msg != NULL)
+        if (message != NULL)
         {
-            message_mangler (msg);
+            message_mangler (message);
 
             // Read the arguments.
-            if (dbus_message_iter_init (msg, &args))
+            if (dbus_message_iter_init (message, &args))
                 print_iter (&args);
 
             /* // free the message */
-            dbus_message_unref (msg);
+            dbus_message_unref (message);
         }
     }
 
-    dbus_connection_unref (conn);
+    dbus_message_unref (message);
+    dbus_connection_unref (connection);
 }
 
 /**
@@ -1052,7 +1061,7 @@ spy ( /* char* param */ )
  * </node>
  */
 void
-xmlparser (char *source)
+dbus_xml_parser (char *source)
 {
     char *token;
 
@@ -1136,15 +1145,15 @@ xmlparser (char *source)
 
                 for (i = 0; i < len; i++)
                 {
-                    for (j = 0; xml_value_type_table[j].key != '\0'; j++)
+                    for (j = 0; dbus_value_type_table[j].key != '\0'; j++)
                     {
-                        if (xml_value_type_table[j].key == value[i])
+                        if (dbus_value_type_table[j].key == value[i])
                         {
-                            printf ("%s ", xml_value_type_table[j].value);
+                            printf ("%s ", dbus_value_type_table[j].value);
                             break;
                         }
                     }
-                    if (xml_value_type_table[j].key == '\0')
+                    if (dbus_value_type_table[j].key == '\0')
                     {
                         puts ("");
                         printf ("==> ERROR: Type char (%c) not known.",
@@ -1266,13 +1275,19 @@ run_daemon ()
 static void
 print_help ()
 {
-    printf ("Syntax: %s [-s] [-d] [<param>]\n\n", APPNAME);
+    printf ("Syntax: %s [-a|-d|-h|-i NAME|-l|-n NAME|-p NAME|-s FILTER|-u NAME|-v]\n\n", APPNAME);
 
     puts ("Usage:");
-    puts ("  -d : Daemonize.");
-    puts ("  -h : Print this help.");
-    puts ("  -s : Spy all signals.");
-    puts ("  -v : Print version.");
+    puts ("  -a: List activatable bus names.");
+    puts ("  -d: Daemonize.");
+    puts ("  -h: Print this help.");
+    puts ("  -i: Returns introspection of NAME.");
+    puts ("  -l: List registered bus names.");
+    puts ("  -n: Returns unique name associated to NAME.");
+    puts ("  -p: Returns PID associated to NAME.");
+    puts ("  -s: Spy signals. FILTER syntax follows D-Bus specification. If FILTER=='all', all messages are caught.");
+    puts ("  -u: Returns UID who owns NAME.");
+    puts ("  -v: Print version.");
 }
 
 static void
@@ -1287,7 +1302,7 @@ print_version ()
 
 
 void
-nice_close (int sig)
+nice_exit (int sig)
 {
     printf ("Print this before closing\n");
     exit (sig);
@@ -1298,8 +1313,7 @@ main (int argc, char **argv)
 {
     // Fork variables.
     bool daemonize = false;
-    bool run_spy = false;
-    pid_t pid = 1, sid;
+    pid_t pid, sid;
 
     // getopt() variables.
     int c;
@@ -1307,7 +1321,20 @@ main (int argc, char **argv)
     extern int optind;
     extern int optopt;
 
-    while ((c = getopt (argc, argv, ":adhi:ln:p:svu:")) != -1)
+
+    // Catch Ctrl-C.
+    struct sigaction act;
+    act.sa_handler = nice_exit;
+    act.sa_flags = 0;
+
+    if ((sigemptyset (&act.sa_mask) == -1) ||
+        (sigaction (SIGINT, &act, NULL) == -1))
+    {
+        perror ("Failed to set SIGINT handler");
+        return 1;
+    }
+
+    while ((c = getopt (argc, argv, ":adhi:ln:p:s:vu:")) != -1)
     {
         switch (c)
         {
@@ -1333,7 +1360,7 @@ main (int argc, char **argv)
             queryBus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg);
             return 0;
         case 's':
-            run_spy = true;
+            spy(optarg);
             break;
         case 'v':
             print_version ();
@@ -1387,26 +1414,6 @@ main (int argc, char **argv)
         // TODO: need to log somewhere, otherwise will go to terminal.
         run_daemon ();
     }
-
-
-    struct sigaction act;
-    act.sa_handler = nice_close;
-    act.sa_flags = 0;
-
-    if ((sigemptyset (&act.sa_mask) == -1) ||
-        (sigaction (SIGINT, &act, NULL) == -1))
-    {
-        perror ("Failed to set SIGINT handler");
-        return 1;
-    }
-
-    // Functions.
-    if (run_spy == true)
-    {
-        spy ();
-    }
-
-    /* jsonexport(); */
 
     return 0;
 }
