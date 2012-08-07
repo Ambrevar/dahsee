@@ -93,7 +93,7 @@ struct xml_dict dbus_value_type_table[] = {
 // This format is used as internal storage, as well as export.
 // Let's use an embedded implementation here.
 #include "json.h"
-
+#define JSON_FORMAT "    "
 
 /**
  * Timestamps.
@@ -127,10 +127,102 @@ timer_print ()
 /*******************************************************************************
  ******************************************************************************/
 
+
+/**
+ * JSON
+ */
+/* static void jsonimport() */
+/* { */
+/*     /\* struct json_object *new_obj; *\/ */
+
+/*     char *input; */
+/*     FILE* tempfile; */
+/*     unsigned long pos; */
+
+/*     tempfile  = fopen(TEMPFILE,"rb"); */
+/*     if (access(TEMPFILE, R_OK) != 0) */
+/*     { */
+/*         perror(TEMPFILE); */
+/*         return; */
+/*     } */
+
+/*     // File buffering. */
+/*     fseek(tempfile, 0, SEEK_END); */
+/*     pos = ftell(tempfile); */
+/*     fseek(tempfile, 0, SEEK_SET); */
+
+/*     input = malloc(pos*sizeof(char)); */
+/*     fread(input, sizeof(char), pos, tempfile); */
+/*     fclose(tempfile); */
+
+/*     // Parsing. */
+/*     /\* new_obj = json_tokener_parse(input); *\/ */
+/*     /\* printf("new_obj.to_string()=%s\n\n", json_object_to_json_string(new_obj)); *\/ */
+
+/*     /\* json_object_put(new_obj); *\/ */
+
+/*     return; */
+/* } */
+
+/**
+ * Profile mode (one line print).
+ *
+ * TODO: implement function.
+ *
+ *  printf (TIME_FORMAT, type, t.tv_sec, t.tv_usec);
+ *
+ *  if (flag & FLAG_SERIAL)
+ *      printf ("\t%u", dbus_message_get_serial (message));
+ *
+ *  if (flag & FLAG_REPLY_SERIAL)
+ *      printf ("\t%u", dbus_message_get_reply_serial (message));
+ *
+ *  if (flag & FLAG_SENDER)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_sender (message)));
+ *
+ *  if (flag & FLAG_DESTINATION)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_destination (message)));
+ *
+ *  if (flag & FLAG_PATH)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_path (message)));
+ *
+ *  if (flag & FLAG_INTERFACE)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_interface (message)));
+ *
+ *  if (flag & FLAG_MEMBER)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_member (message)));
+ *
+ *  if (flag & FLAG_ERROR_NAME)
+ *      printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_error_name (message)));
+ *
+ *  printf ("\n");
+ */
+
+
 // TODO: temp vars. Clean later.
-#define SPY_BUS "spy.lair"
-#define FILTER_SIZE 1024
+/* #define SPY_BUS "spy.lair" */
+/* #define FILTER_SIZE 1024 */
 #define TEMPFILE "temp.json"
+
+void
+JsonPrint(JsonNode *message, const char* path)
+{
+    if (access (path, W_OK) != 0)
+    {
+        perror (path);
+        return;
+    }
+    // Binary mode is useless on POSIX.
+    FILE* output = fopen (path, "a");
+
+    char *tmp = json_stringify (message, JSON_FORMAT);
+    fwrite (tmp, sizeof (char), strlen (tmp), output);
+    fwrite ("\n", sizeof (char), 1, output);
+
+    free (tmp);
+    fclose (output);
+}
+
 
 /**
  * Bus Queries
@@ -359,78 +451,6 @@ queryBus(int query, char* parameter)
 }
 
 
-/**
- * JSON
- */
-/* static void jsonimport() */
-/* { */
-/*     /\* struct json_object *new_obj; *\/ */
-
-/*     char *input; */
-/*     FILE* tempfile; */
-/*     unsigned long pos; */
-
-/*     tempfile  = fopen(TEMPFILE,"rb"); */
-/*     if (access(TEMPFILE, R_OK) != 0) */
-/*     { */
-/*         perror(TEMPFILE); */
-/*         return; */
-/*     } */
-
-/*     // File buffering. */
-/*     fseek(tempfile, 0, SEEK_END); */
-/*     pos = ftell(tempfile); */
-/*     fseek(tempfile, 0, SEEK_SET); */
-
-/*     input = malloc(pos*sizeof(char)); */
-/*     fread(input, sizeof(char), pos, tempfile); */
-/*     fclose(tempfile); */
-
-/*     // Parsing. */
-/*     /\* new_obj = json_tokener_parse(input); *\/ */
-/*     /\* printf("new_obj.to_string()=%s\n\n", json_object_to_json_string(new_obj)); *\/ */
-
-/*     /\* json_object_put(new_obj); *\/ */
-
-/*     return; */
-/* } */
-
-/* static void jsonexport() */
-/* { */
-/*     struct JsonNode *export_object; */
-/*     struct JsonNode *testbool = json_mkbool(true); */
-/*     struct JsonNode *testnum = json_mknumber(3.1415); */
-/*     struct JsonNode *teststr = json_mkstring("€€€€ €€€€"); */
-
-/*     FILE* export_file; */
-
-/*     // Binary mode is useless on POSIX. */
-/*     export_file  = fopen(TEMPFILE,"w"); */
-/*     if (access(TEMPFILE, W_OK) != 0) */
-/*     { */
-/*         perror(TEMPFILE); */
-/*         return; */
-/*     } */
-
-/*     export_object = json_mkobject(); */
-/*     json_append_member(export_object, "testbool", testbool); */
-/*     json_append_member(export_object, "teststr", teststr); */
-/*     json_append_member(export_object, "testnum", testnum); */
-
-/*     char * tmp=json_stringify(export_object,"    "); */
-
-/*     // Note: this works with UTF-8. */
-/*     /\* fwrite( tmp , sizeof(char), strlen(tmp), export_file  ); *\/ */
-
-/*     free(tmp); */
-
-/*     json_delete(export_object); */
-
-/*     fclose(export_file); */
-/*     return; */
-/* } */
-
-
 
 /**
  * Members attributes.
@@ -508,204 +528,6 @@ queryBus(int query, char* parameter)
  * DBUS_TYPE_UNIX_FD_AS_STRING
  * DBUS_TYPE_VARIANT_AS_STRING
  */
-#define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
-
-enum Flags
-{
-    FLAG_SERIAL = 1,
-    FLAG_REPLY_SERIAL = 2,
-    FLAG_PATH = 4,
-    FLAG_INTERFACE = 8,
-    FLAG_MEMBER = 32,
-    FLAG_ERROR_NAME = 64
-};
-
-static void
-message_mangler (DBusMessage * message)
-{
-    struct timeval time_machine;
-    struct tm *time_human;
-    char *type = "Unknown";
-    unsigned int flag = 0;
-
-    if (gettimeofday (&time_machine, NULL) < 0)
-    {
-        perror ("TIME");
-        return;
-    }
-
-    // Use "localtime" or "gmtime" to get date and time from the elapsed seconds
-    // since epoch.
-    /* time_human = localtime( &(time_machine.tv_sec) ); */
-    time_human = gmtime (&(time_machine.tv_sec));
-
-    switch (dbus_message_get_type (message))
-    {
-
-            // TODO: check if serial is different / needed for error and method return.
-
-        case DBUS_MESSAGE_TYPE_ERROR:
-            type = "Error";
-            flag = FLAG_SERIAL | FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
-            break;
-
-        case DBUS_MESSAGE_TYPE_METHOD_CALL:
-            type = "Method Call";
-            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
-            break;
-
-        case DBUS_MESSAGE_TYPE_METHOD_RETURN:
-            type = "Method return";
-            flag = FLAG_SERIAL | FLAG_REPLY_SERIAL;
-            break;
-
-
-        case DBUS_MESSAGE_TYPE_SIGNAL:
-            type = "Signal";
-            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
-            break;
-
-        default:
-            printf ("Unknown message.\n");
-            break;
-    }
-
-    // Print
-    /* printf (TIME_FORMAT, type, t.tv_sec, t.tv_usec); */
-
-    /* if (flag & FLAG_SERIAL) */
-    /*     printf ("\t%u", dbus_message_get_serial (message)); */
-
-    /* if (flag & FLAG_REPLY_SERIAL) */
-    /*     printf ("\t%u", dbus_message_get_reply_serial (message)); */
-
-    /* if (flag & FLAG_SENDER) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_sender (message))); */
-
-    /* if (flag & FLAG_DESTINATION) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_destination (message))); */
-
-    /* if (flag & FLAG_PATH) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_path (message))); */
-
-    /* if (flag & FLAG_INTERFACE) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_interface (message))); */
-
-    /* if (flag & FLAG_MEMBER) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_member (message))); */
-
-    /* if (flag & FLAG_ERROR_NAME) */
-    /*     printf ("\t%s", TRAP_NULL_STRING (dbus_message_get_error_name (message))); */
-
-    /* printf ("\n"); */
-
-    // JSON Export
-    struct JsonNode *export_object;
-    export_object = json_mkobject ();
-
-    struct JsonNode *export_type = json_mkstring (type);
-    json_append_member (export_object, "type", export_type);
-
-    struct JsonNode *export_time = json_mkobject ();
-    struct JsonNode *export_time_sec = json_mknumber (time_machine.tv_sec);
-    struct JsonNode *export_time_usec = json_mknumber (time_machine.tv_usec);
-    json_append_member (export_time, "sec", export_time_sec);
-    json_append_member (export_time, "usec", export_time_usec);
-    json_append_member (export_object, "time", export_time);
-
-    struct JsonNode *export_time_human = json_mkobject ();
-    struct JsonNode *export_time_human_hour =
-        json_mknumber (time_human->tm_hour);
-    struct JsonNode *export_time_human_min =
-        json_mknumber (time_human->tm_min);
-    struct JsonNode *export_time_human_sec =
-        json_mknumber (time_human->tm_sec);
-    json_append_member (export_time_human, "hour", export_time_human_hour);
-    json_append_member (export_time_human, "min", export_time_human_min);
-    json_append_member (export_time_human, "sec", export_time_human_sec);
-    json_append_member (export_object, "time (human)", export_time_human);
-
-
-    struct JsonNode *export_sender =
-        json_mkstring (TRAP_NULL_STRING (dbus_message_get_sender (message)));
-    json_append_member (export_object, "sender", export_sender);
-
-    struct JsonNode *export_destination =
-        json_mkstring (TRAP_NULL_STRING
-                       (dbus_message_get_destination (message)));
-    json_append_member (export_object, "destination", export_destination);
-
-
-    if (flag & FLAG_SERIAL)
-    {
-        struct JsonNode *export_serial =
-            json_mknumber (dbus_message_get_serial (message));
-        json_append_member (export_object, "serial", export_serial);
-    }
-
-    if (flag & FLAG_REPLY_SERIAL)
-    {
-        struct JsonNode *export_reply_serial =
-            json_mknumber (dbus_message_get_reply_serial (message));
-        json_append_member (export_object, "reply_serial",
-                            export_reply_serial);
-    }
-
-    if (flag & FLAG_PATH)
-    {
-        // TRAP_NULL_STRING is not needed here if specification is correctly handled.
-        struct JsonNode *export_path =
-            json_mkstring (TRAP_NULL_STRING
-                           (dbus_message_get_path (message)));
-        json_append_member (export_object, "path", export_path);
-    }
-
-    if (flag & FLAG_INTERFACE)
-    {
-        // Interface is optional for method calls.
-        struct JsonNode *export_interface =
-            json_mkstring (TRAP_NULL_STRING
-                           (dbus_message_get_interface (message)));
-        json_append_member (export_object, "interface", export_interface);
-    }
-
-    if (flag & FLAG_MEMBER)
-    {
-        struct JsonNode *export_member =
-            json_mkstring (TRAP_NULL_STRING
-                           (dbus_message_get_member (message)));
-        json_append_member (export_object, "member", export_member);
-    }
-
-    if (flag & FLAG_ERROR_NAME)
-    {
-        // TRAP_NULL_STRING is not needed here if specification is correctly handled.
-        struct JsonNode *export_error_name =
-            json_mkstring (TRAP_NULL_STRING
-                           (dbus_message_get_error_name (message)));
-        json_append_member (export_object, "error_name", export_error_name);
-    }
-
-    FILE *export_file;
-
-    // Binary mode is useless on POSIX.
-    export_file = fopen (TEMPFILE, "a");
-    if (access (TEMPFILE, W_OK) != 0)
-    {
-        perror (TEMPFILE);
-        return;
-    }
-
-
-    char *tmp = json_stringify (export_object, "    ");
-    fwrite (tmp, sizeof (char), strlen (tmp), export_file);
-    fwrite ("\n", sizeof (char), 1, export_file);
-
-    // Clean
-    free (tmp);
-    json_delete (export_object);
-    fclose (export_file);
-}
 
 // TODO: stolen from dbus-print-message.c. Rewrite?
 static void
@@ -945,6 +767,128 @@ print_iter (DBusMessageIter * iter)
 }
 
 /**
+ * Create JSON object from message and return it. The created node should be
+ * freed with json_delete(node);
+ */
+#define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
+
+enum Flags
+{
+    FLAG_SERIAL = 1,
+    FLAG_REPLY_SERIAL = 2,
+    FLAG_PATH = 4,
+    FLAG_INTERFACE = 8,
+    FLAG_MEMBER = 32,
+    FLAG_ERROR_NAME = 64
+};
+
+// TODO: will probably need to add "defines" for all fields afterwards.
+#define DBUS_JSON_TYPE "type"
+
+static struct JsonNode*
+message_mangler (DBusMessage * message)
+{
+    struct JsonNode *message_node = json_mkobject ();
+    unsigned int flag = 0;
+
+    // TODO: add index? (message 1, message 2, etc.)
+
+    // TIME
+    struct timeval time_machine;
+    struct tm *time_human;
+    if (gettimeofday (&time_machine, NULL) < 0)
+    {
+        perror ("Could not get time.");
+        return NULL;
+    }
+
+    // TODO: use argv parameter to request human readable time and local/UTC.
+    // Use "localtime" or "gmtime" to get date and time from the elapsed seconds
+    // since epoch.
+    /* time_human = localtime( &(time_machine.tv_sec) ); */
+    time_human = gmtime (&(time_machine.tv_sec));
+
+    json_append_member (message_node, "sec", json_mknumber (time_machine.tv_sec));
+    json_append_member (message_node, "usec", json_mknumber (time_machine.tv_usec));
+
+    // TODO: make this field optional.
+    struct JsonNode *time_node = json_mkobject ();
+    json_append_member (time_node, "hour", json_mknumber (time_human->tm_hour) );
+    json_append_member (time_node, "min", json_mknumber (time_human->tm_min) );
+    json_append_member (time_node, "sec", json_mknumber (time_human->tm_sec) );
+    json_append_member (message_node, "time_human", time_node);
+
+    // TYPE
+    switch (dbus_message_get_type (message))
+    {
+        // TODO: check if serial is different / needed for error and method return.
+        case DBUS_MESSAGE_TYPE_ERROR:
+            json_append_member (message_node, DBUS_JSON_TYPE, json_mkstring("error") );
+            flag = FLAG_SERIAL | FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
+            break;
+
+        case DBUS_MESSAGE_TYPE_METHOD_CALL:
+            json_append_member (message_node, DBUS_JSON_TYPE, json_mkstring("method_call"));
+            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
+            break;
+
+        case DBUS_MESSAGE_TYPE_METHOD_RETURN:
+            json_append_member (message_node, DBUS_JSON_TYPE, json_mkstring("method_return"));
+            flag = FLAG_SERIAL | FLAG_REPLY_SERIAL;
+            break;
+
+        case DBUS_MESSAGE_TYPE_SIGNAL:
+            json_append_member (message_node, DBUS_JSON_TYPE, json_mkstring("signal"));
+            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
+            break;
+
+        default:
+            json_append_member (message_node, DBUS_JSON_TYPE, json_mkstring("unknown"));
+            flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER | FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
+            break;
+    }
+
+    // SENDER
+    json_append_member (message_node, "sender",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_sender (message) )));
+
+    // DESTINATION
+    json_append_member (message_node, "destination",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_destination (message) )));
+
+    // FLAGS
+    if (flag & FLAG_SERIAL)
+        json_append_member (message_node, "serial",
+                            json_mknumber (  dbus_message_get_serial (message) ));
+
+    if (flag & FLAG_REPLY_SERIAL)
+        json_append_member (message_node, "reply_serial",
+                            json_mknumber (  dbus_message_get_reply_serial (message) ));
+
+    // TRAP_NULL_STRING is not needed here if specification is correctly handled.
+    if (flag & FLAG_PATH)
+    json_append_member (message_node, "path",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_path (message) )));
+
+    // Interface is optional for method calls.
+    if (flag & FLAG_INTERFACE)
+    json_append_member (message_node, "interface",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_interface (message) )));
+
+    if (flag & FLAG_MEMBER)
+    json_append_member (message_node, "member",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_member (message) )));
+
+    // TRAP_NULL_STRING is not needed here if specification is correctly handled.
+    if (flag & FLAG_ERROR_NAME)
+    json_append_member (message_node, "error_name",
+                        json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_error_name (message) )));
+
+
+    return message_node;
+}
+
+/**
  * Eavesdrop messages and store them internally.  Parameter is a user-defined
  * filter. Filter syntax is as defined by D-Bus specification. Example:
  *
@@ -1011,6 +955,7 @@ spy(char* filter)
         exit (1);
     }
 
+    // TODO: remove this line later.
     printf ("### Filter: %s\n", eavesfilter);
 
     for (;;)
@@ -1021,18 +966,20 @@ spy(char* filter)
 
         if (message != NULL)
         {
-            message_mangler (message);
+            JsonNode* message_node = message_mangler (message);
+            JsonPrint(message_node, TEMPFILE);
+            json_delete(message_node);
 
+            // TODO: needs testing.
             // Read the arguments.
-            if (dbus_message_iter_init (message, &args))
-                print_iter (&args);
+            /* if (dbus_message_iter_init (message, &args)) */
+            /*     print_iter (&args); */
 
             /* // free the message */
             dbus_message_unref (message);
         }
     }
 
-    dbus_message_unref (message);
     dbus_connection_unref (connection);
 }
 
