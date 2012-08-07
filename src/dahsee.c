@@ -703,6 +703,8 @@ args_mangler (DBusMessageIter * args)
         }
     }
     while (dbus_message_iter_next (args));
+
+    return args_node;
 }
 
 
@@ -861,7 +863,14 @@ message_mangler (DBusMessage * message)
 
 
     // ARGUMENTS
-    // TODO: implement.
+    DBusMessageIter args;
+    if (!dbus_message_iter_init (message, &args))
+    {
+        fprintf (stderr, "Message has no arguments!\n");
+        return NULL;
+    }
+
+    json_append_member (message_node, "args", args_mangler(&args));
 
     return message_node;
 }
