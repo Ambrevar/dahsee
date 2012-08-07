@@ -94,6 +94,7 @@ struct xml_dict dbus_value_type_table[] = {
 // Let's use an embedded implementation here.
 #include "json.h"
 #define JSON_FORMAT "    "
+static uint32_t index = 0;
 
 /**
  * Timestamps.
@@ -126,7 +127,6 @@ timer_print ()
 
 /*******************************************************************************
  ******************************************************************************/
-
 
 /**
  * JSON
@@ -234,16 +234,16 @@ JsonPrint(JsonNode *message, const char* path)
 // TODO: stupid enum?
 enum Queries
 {
-    QUERY_LIST_NAMES = 1,
-    QUERY_ACTIVATABLE_NAMES = 2,
-    QUERY_GET_NAME_OWNER = 4,
-    QUERY_GET_CONNECTION_UNIX_USER = 8,
-    QUERY_GET_CONNECTION_UNIX_PROCESS_ID = 16,
-    QUERY_INTROSPECT = 32
+    QUERY_LIST_NAMES,
+    QUERY_ACTIVATABLE_NAMES,
+    QUERY_GET_NAME_OWNER,
+    QUERY_GET_CONNECTION_UNIX_USER,
+    QUERY_GET_CONNECTION_UNIX_PROCESS_ID,
+    QUERY_INTROSPECT
 };
 
 void
-queryBus(int query, char* parameter)
+queryBus(enum Queries query, char* parameter)
 {
     DBusConnection *connection;
     DBusError error;
@@ -766,9 +766,12 @@ static struct JsonNode*
 message_mangler (DBusMessage * message)
 {
     struct JsonNode *message_node = json_mkobject ();
-    unsigned int flag = 0;
+    enum Flags flag = 0;
 
     // TODO: add index? (message 1, message 2, etc.)
+    // INDEX
+    index++;
+    json_append_member (message_node, "index", json_mknumber (index) );
 
     // TIME
     struct timeval time_machine;
@@ -893,8 +896,6 @@ spy(char* filter)
     DBusError error;
 
     DBusMessage *message = NULL;
-    DBusMessageIter args;
-
 
     // Should never happen;
     if (filter == NULL)
@@ -957,12 +958,6 @@ spy(char* filter)
             JsonPrint(message_node, TEMPFILE);
             json_delete(message_node);
 
-            // TODO: needs testing.
-            // Read the arguments.
-            /* if (dbus_message_iter_init (message, &args)) */
-            /*     print_iter (&args); */
-
-            /* // free the message */
             dbus_message_unref (message);
         }
     }
