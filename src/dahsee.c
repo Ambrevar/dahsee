@@ -453,39 +453,6 @@ queryBus(int query, char* parameter)
 
 
 /**
- * Members attributes.
- *
- * TODO: to be completed.
- *
- * TODO: why can signals have destination? D-Bus reference says they are always
- * broadcasted.
- *
- * All messages have:
- * -type
- * -time
- * -sender (optional)
- * -destination (optional)
- * -arguments i.e. data payload (optional)
- * 
- * Errors have:
- * -error name
- * -reply serial
- *
- * Method calls have:
- * -serial
- * -object path
- * -interface (optional)
- * -member name
- *
- * Method returns have:
- * -reply_serial
- *
- * Signals have:
- * -serial
- * -object path
- * -interface
- * -member name
- *
  * Arguments can be of the following types:
  *
  * DBUS_TYPE_ARRAY
@@ -529,247 +496,255 @@ queryBus(int query, char* parameter)
  * DBUS_TYPE_VARIANT_AS_STRING
  */
 
-// TODO: stolen from dbus-print-message.c. Rewrite?
-static void
-print_iter (DBusMessageIter * iter)
+static struct JsonNode*
+args_mangler (DBusMessageIter * args)
 {
+    struct JsonNode *args_node = json_mkobject ();
+
     do
     {
-        int type = dbus_message_iter_get_arg_type (iter);
+        int type = dbus_message_iter_get_arg_type (args);
 
         if (type == DBUS_TYPE_INVALID)
             break;
 
         switch (type)
         {
-            case DBUS_TYPE_STRING:
+        case DBUS_TYPE_STRING:
+        {
+            char *value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "string", json_mkstring (value));
+            break;
+        }
+
+        case DBUS_TYPE_SIGNATURE:
+        {
+            char *value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "signature", json_mkstring (value));
+            break;
+        }
+
+        // TODO: object_path or path?
+        case DBUS_TYPE_OBJECT_PATH:
+        {
+            char *value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "object_path", json_mkstring (value));
+            break;
+        }
+
+        case DBUS_TYPE_INT16:
+        {
+            dbus_int16_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "int16", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_UINT16:
+        {
+            dbus_uint16_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "uint16", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_INT32:
+        {
+            dbus_int32_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "int32", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_UINT32:
+        {
+            dbus_uint32_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "uint32", json_mknumber (value));
+            break;
+        }
+
+        // TODO: check if 64 bit works properly.
+        case DBUS_TYPE_INT64:
+        {
+            dbus_int64_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "int64", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_UINT64:
+        {
+            dbus_uint64_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "uint64", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_DOUBLE:
+        {
+            double value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "double", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_BYTE:
+        {
+            unsigned char value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "byte", json_mknumber (value));
+            break;
+        }
+
+        // TODO: bool or boolean?
+        case DBUS_TYPE_BOOLEAN:
+        {
+            dbus_bool_t value;
+            dbus_message_iter_get_basic (args, &value);
+            json_append_member (args_node, "bool", json_mknumber (value));
+            break;
+        }
+
+        case DBUS_TYPE_VARIANT:
+        {
+            DBusMessageIter subargs;
+            dbus_message_iter_recurse (args, &subargs);
+            json_append_member (args_node, "variant", args_mangler (&subargs));
+            break;
+        }
+
+        // TODO: needs some testing.
+        case DBUS_TYPE_ARRAY:
+        {
+            DBusMessageIter subargs;
+            dbus_message_iter_recurse (args, &subargs);
+            struct JsonNode* array = json_mkarray();
+
+            /* if (dbus_type_is_fixed ( dbus_message_iter_get_arg_type (&subargs) ) == FALSE) */
+            /* { */
+                // Not fixed size elements.
+
+                while ( dbus_message_iter_get_arg_type (&subargs) != DBUS_TYPE_INVALID )
                 {
-                    char *val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("string \"");
-                    printf ("%s", val);
-                    printf ("\"\n");
-                    break;
+                    json_append_element ( array, args_mangler(&subargs));
+                    dbus_message_iter_next (&subargs);
                 }
+            /* } */
+            /* else */
+            /* { */
+            /*     // Fixed size elements. We use a different method because */
+            /*     // performances are better in this case. */
+            /*     int array_len; */
+            /*     DBusBasicValue *arrayptr; */
+            /*     int i; */
 
-            case DBUS_TYPE_SIGNATURE:
-                {
-                    char *val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("signature \"");
-                    printf ("%s", val);
-                    printf ("\"\n");
-                    break;
-                }
+            /*     dbus_message_iter_get_fixed_array (&subargs, &arrayptr, &array_len); */
+            /*     for ( i=0; i<array_len ; i++) */
+            /*     { */
+            /*         json_append_element ( array, message_mangler( arrayptr[i])); */
+            /*     } */
+            /* } */
 
-            case DBUS_TYPE_OBJECT_PATH:
-                {
-                    char *val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("object path \"");
-                    printf ("%s", val);
-                    printf ("\"\n");
-                    break;
-                }
+            json_append_member (args_node, "array", array);
 
-            case DBUS_TYPE_INT16:
-                {
-                    dbus_int16_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("int16 %d\n", val);
-                    break;
-                }
+            break;
+        }
 
-            case DBUS_TYPE_UINT16:
-                {
-                    dbus_uint16_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("uint16 %u\n", val);
-                    break;
-                }
+        // TODO: check if JSON structure is right here.
+        case DBUS_TYPE_DICT_ENTRY:
+        {
+            DBusMessageIter subargs;
+            dbus_message_iter_recurse (args, &subargs);
 
-            case DBUS_TYPE_INT32:
-                {
-                    dbus_int32_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("int32 %d\n", val);
-                    break;
-                }
+            struct JsonNode* dict = json_mkarray();
+            json_append_element ( dict, args_mangler(&subargs));
+            dbus_message_iter_next (&subargs);
+            json_append_element ( dict, args_mangler(&subargs));
 
-            case DBUS_TYPE_UINT32:
-                {
-                    dbus_uint32_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("uint32 %u\n", val);
-                    break;
-                }
+            json_append_member (args_node, "dict_entry", dict);
+            break;
+        }
 
-            case DBUS_TYPE_INT64:
-                {
-                    dbus_int64_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-#ifdef DBUS_INT64_PRINTF_MODIFIER
-                    printf ("int64 %" DBUS_INT64_PRINTF_MODIFIER "d\n", val);
-#else
-                    printf ("int64 (omitted)\n");
-#endif
-                    break;
-                }
+        case DBUS_TYPE_STRUCT:
+        {
+            DBusMessageIter subargs;
+            dbus_message_iter_recurse (args, &subargs);
+            struct JsonNode* structure = json_mkarray();
 
-            case DBUS_TYPE_UINT64:
-                {
-                    dbus_uint64_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-#ifdef DBUS_INT64_PRINTF_MODIFIER
-                    printf ("uint64 %" DBUS_INT64_PRINTF_MODIFIER "u\n", val);
-#else
-                    printf ("uint64 (omitted)\n");
-#endif
-                    break;
-                }
+            while ( dbus_message_iter_get_arg_type (&subargs) != DBUS_TYPE_INVALID )
+            {
+                json_append_element ( structure, args_mangler(&subargs));
+                dbus_message_iter_next (&subargs);
+            }
+            json_append_member (args_node, "struct", structure);
+            break;
+        }
 
-            case DBUS_TYPE_DOUBLE:
-                {
-                    double val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("double %g\n", val);
-                    break;
-                }
+        // TODO: write something else ?
+        case DBUS_TYPE_UNIX_FD:
+        {
+            json_append_member (args_node, "unix_fd", json_mkstring(""));
+            break;
+        }
 
-            case DBUS_TYPE_BYTE:
-                {
-                    unsigned char val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("byte %d\n", val);
-                    break;
-                }
+        case DBUS_TYPE_INVALID:
+        {
+            json_append_member (args_node, "invalid", json_mkstring(""));
+            break;
+        }
 
-            case DBUS_TYPE_BOOLEAN:
-                {
-                    dbus_bool_t val;
-                    dbus_message_iter_get_basic (iter, &val);
-                    printf ("boolean %s\n", val ? "true" : "false");
-                    break;
-                }
-
-            case DBUS_TYPE_VARIANT:
-                {
-                    DBusMessageIter subiter;
-
-                    dbus_message_iter_recurse (iter, &subiter);
-
-                    printf ("variant ");
-                    print_iter (&subiter);
-                    break;
-                }
-            case DBUS_TYPE_ARRAY:
-                {
-                    // TODO: needs some testing.
-
-                    int array_type;
-                    DBusMessageIter subiter;
-
-                    int array_len;
-                    DBusBasicValue *array;
-
-                    dbus_message_iter_recurse (iter, &subiter);
-                    array_type = dbus_message_iter_get_arg_type (&subiter);
-
-                    if (dbus_type_is_fixed (array_type) == FALSE)
-                    {
-                        // Not fixed.
-                        printf ("[");
-                        while (array_type != DBUS_TYPE_INVALID)
-                        {
-                            print_iter (&subiter);
-
-                            dbus_message_iter_next (&subiter);
-                            array_type =
-                                dbus_message_iter_get_arg_type (&subiter);
-
-                            if (array_type != DBUS_TYPE_INVALID)
-                                printf (",");
-                        }
-                        printf ("]\n");
-                    }
-                    else
-                    {
-                        dbus_message_iter_get_fixed_array (&subiter, &array,
-                                                           &array_len);
-                        // FIXME: there may be an issue here with the unknown type.
-                        int i;
-                        printf ("[");
-                        for (i = 0; i < array_len - 1; i++)
-                        {
-                            printf ("%lu,", array[i]);
-                        }
-                        printf ("%lu", array[array_len - 1]);
-                        printf ("]\n");
-                    }
-
-                    break;
-                }
-            case DBUS_TYPE_DICT_ENTRY:
-                {
-                    DBusMessageIter subiter;
-
-                    dbus_message_iter_recurse (iter, &subiter);
-
-                    printf ("dict entry(\n");
-                    print_iter (&subiter);
-                    dbus_message_iter_next (&subiter);
-                    print_iter (&subiter);
-                    printf (")\n");
-                    break;
-                }
-
-            case DBUS_TYPE_STRUCT:
-                {
-                    int current_type;
-                    DBusMessageIter subiter;
-
-                    dbus_message_iter_recurse (iter, &subiter);
-
-                    printf ("struct {\n");
-                    while ((current_type =
-                            dbus_message_iter_get_arg_type (&subiter)) !=
-                           DBUS_TYPE_INVALID)
-                    {
-                        print_iter (&subiter);
-                        dbus_message_iter_next (&subiter);
-                        if (dbus_message_iter_get_arg_type (&subiter) !=
-                            DBUS_TYPE_INVALID)
-                            printf (",");
-                    }
-                    printf ("}\n");
-                    break;
-                }
-
-            case DBUS_TYPE_UNIX_FD:
-                {
-                    // TODO: print something?
-                    printf ("Unix FD.\n");
-                    break;
-                }
-
-            case DBUS_TYPE_INVALID:
-                {
-                    printf ("Invalid argument.\n");
-                    break;
-                }
-
-            default:
-                printf ("Warning: (%c) out of specification!\n", type);
-                break;
+        default:
+            printf ("Warning: (%c) out of specification!\n", type);
+            break;
         }
     }
-    while (dbus_message_iter_next (iter));
+    while (dbus_message_iter_next (args));
 }
+
 
 /**
  * Create JSON object from message and return it. The created node should be
  * freed with json_delete(node);
+ *
+ * Members attributes.
+ *
+ * TODO: to be completed.
+ *
+ * TODO: why can signals have destination? D-Bus reference says they are always
+ * broadcasted.
+ *
+ * All messages have:
+ * -type
+ * -time
+ * -sender (optional)
+ * -destination (optional)
+ * -arguments i.e. data payload (optional)
+ * 
+ * Errors have:
+ * -error name
+ * -reply serial
+ *
+ * Method calls have:
+ * -serial
+ * -object path
+ * -interface (optional)
+ * -member name
+ *
+ * Method returns have:
+ * -reply_serial
+ *
+ * Signals have:
+ * -serial
+ * -object path
+ * -interface
+ * -member name
+ *
  */
+
 #define TRAP_NULL_STRING(str) ((str) ? (str) : "<none>")
 
 enum Flags
@@ -884,6 +859,9 @@ message_mangler (DBusMessage * message)
     json_append_member (message_node, "error_name",
                         json_mkstring ( TRAP_NULL_STRING ( dbus_message_get_error_name (message) )));
 
+
+    // ARGUMENTS
+    // TODO: implement.
 
     return message_node;
 }

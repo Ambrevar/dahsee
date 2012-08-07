@@ -1,12 +1,11 @@
 -Manage license.
--Storage: JSON with internal code.
 -Export report HTML.
 -Stats. (count for bus name, interface, object, member, dest|| size -- largest, smallest, mean)
 -Make JSON lib C99 compliant.
 -Web interface.
 -Add info: signature / duration, message size
 
--Sort by time
+-Sort by time / index ?
 -Index ? Bus name, Interface, Object, Member, Signal?
 
 -Handle system bus + custom addresses.
