@@ -12,8 +12,8 @@ YEAR = "2012"
 UI_WEB ?= 0
 
 ## Customize below to fit your system
-# CFLAGS ?= -g3 -O0
-CFLAGS ?= -Os
+CFLAGS ?= -g3 -O0
+# CFLAGS ?= -Os
 
 ## Paths
 PREFIX ?= /usr/local

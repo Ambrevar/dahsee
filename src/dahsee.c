@@ -65,22 +65,32 @@
 /******************************************************************************/
 /* Options                                                                    */
 /******************************************************************************/
+
+// TODO: check if output is always properly closed on exit.
+
+static volatile sig_atomic_t doneflag = 0;
+
+static FILE* output = NULL;
+static FILE* logfile = NULL;
+static FILE* input = NULL;
+static const char *output_path = NULL;
+static const char *input_path = NULL;
+static const char *logfile_path = NULL;
+
+// Contains the whole bunch of messages caught using spy();
+static JsonNode *message_array ;
+
+// Output options.
 enum OutputFormat
 {
     FORMAT_JSON,
     FORMAT_PROFILE,
     FORMAT_XML
 };
-static volatile sig_atomic_t doneflag = 0;
-// TODO: check if output is alwaus properly closed on exit.
-static FILE* output = NULL;
-static FILE* input = NULL;
-static const char *output_path = NULL;
-static const char *input_path = NULL;
-static bool option_force_overwrite = false;
 static int option_output_format = FORMAT_JSON;
-// Contains the whole bunch of messages caught using spy();
-static JsonNode *message_array ;
+static bool option_force_overwrite = false;
+
+// Specify the indentation in JSON output.
 #define JSON_FORMAT "  "
 #define JSON_FORMAT_NONE ""
 
@@ -159,30 +169,6 @@ json_import(const char * inputpath)
 void
 json_print (JsonNode * message)
 {
-    // Open output for the first time.
-    if (output == NULL)
-    {
-        // To stdout by default.
-        if (output_path == NULL)
-            output = stdout;
-        else
-        {
-            // Check if file exists, and if user allowed it to be overwritten.
-            if (option_force_overwrite == false && access (output_path, F_OK) == 0)
-            {
-                perror (output_path);
-                return;
-            }
-
-            // Note: binary mode is useless on POSIX.
-            output = fopen (output_path, "w");
-            if (output == NULL)
-            {
-                perror (output_path);
-                return;
-            }
-        }
-    }
 
     char *tmp = json_stringify (message, JSON_FORMAT);
     fwrite (tmp, sizeof (char), strlen (tmp), output);
@@ -378,8 +364,7 @@ dbus_xml_parser (char * source)
         // Should never happen if input is as expected.
         else
         {
-            // TODO: lig this.
-            printf ("ERROR: could not recognize token (%s)\n", token);
+            fprintf (logfile, "ERROR: could not recognize token (%s).\n", token);
             break;
         }
 
@@ -431,8 +416,7 @@ dbus_xml_parser (char * source)
                     // Char not found in table.
                     if (dbus_value_type_table[j].key == '\0')
                     {
-                        // TODO: log this.
-                        printf ("ERROR: Type char (%c) not known.\n", value[i]);
+                        fprintf (logfile, "ERROR: Type char (%c) not known.\n", value[i]);
                         break;
                     }
                 }
@@ -450,8 +434,7 @@ dbus_xml_parser (char * source)
             // Should never happen.
             else
             {
-                // TODO: log this.
-                printf ("ERROR: could not recognize token (%s)\n", token);
+                fprintf (logfile, "ERROR: could not recognize token (%s).\n", token);
                 break;
             }
 
@@ -724,9 +707,8 @@ args_mangler (DBusMessageIter * args)
         break;
     }
 
-    // TODO: put this to log.
     default:
-        printf ("Warning: (%c) out of specification!\n", type);
+        fprintf (logfile, "WARNING: Type (%c) out of specification!\n", type);
         break;
     }
 
@@ -801,7 +783,7 @@ message_mangler (DBusMessage * message)
     // timeval.
     if (gettimeofday (&time_machine, NULL) < 0)
     {
-        perror ("Could not get time.");
+        fprintf (logfile, "ERROR: Could not get timestamp.\n");
         return NULL;
     }
 
@@ -918,8 +900,7 @@ message_mangler (DBusMessage * message)
     DBusMessageIter args;
     if (!dbus_message_iter_init (message, &args))
     {
-        // TODO: log this.
-        fprintf (stderr, "Message has no arguments!\n");
+        fprintf (logfile, "ERROR: Message has no arguments.\n");
         return NULL;
     }
 
@@ -972,7 +953,7 @@ query_bus (enum Queries query, char *parameter)
     connection = dbus_bus_get (DBUS_BUS_SESSION, &error);
     if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Connection Error (%s)", error.message);
+        fprintf (logfile, "ERROR: Connection Error (%s).\n", error.message);
         dbus_error_free (&error);
     }
     if (connection == NULL)
@@ -1041,13 +1022,13 @@ query_bus (enum Queries query, char *parameter)
     }
 
     default:
-        fprintf (stderr, "Query unrecognized.\n");
+        fprintf (logfile, "ERROR: Query unrecognized.\n");
         return NULL;
     }
 
     if (message == NULL)
     {
-        fprintf (stderr, "Message creation error.\n");
+        fprintf (logfile, "ERROR: Message creation error.\n");
         return NULL;
     }
 
@@ -1058,7 +1039,7 @@ query_bus (enum Queries query, char *parameter)
         if (!dbus_message_iter_append_basic
             (&args, DBUS_TYPE_STRING, &parameter))
         {
-            fprintf (stderr, "Out Of Memory!\n");
+            fprintf (logfile, "ERROR: Out Of Memory!\n");
             return NULL;
         }
     }
@@ -1067,12 +1048,12 @@ query_bus (enum Queries query, char *parameter)
     // -1 is default timeout.
     if (!dbus_connection_send_with_reply (connection, message, &pending, -1))
     {
-        fprintf (stderr, "Out Of Memory!\n");
-         return NULL;
+        fprintf (logfile, "ERROR: Out Of Memory!\n");
+        return NULL;
     }
     if (pending == NULL)
     {
-        fprintf (stderr, "Pending Call Null\n");
+        fprintf (logfile, "ERROR: Pending Call Null\n");
         return NULL;
     }
 
@@ -1089,7 +1070,7 @@ query_bus (enum Queries query, char *parameter)
     message = dbus_pending_call_steal_reply (pending);
     if (message == NULL)
     {
-        fprintf (stderr, "Reply Null\n");
+        fprintf (logfile, "ERROR: Reply Null\n");
         return NULL;
     }
 
@@ -1145,7 +1126,7 @@ spy (char *filter)
     connection = dbus_bus_get (DBUS_BUS_SESSION, &error);
     if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Connection Error (%s)", error.message);
+        fprintf (logfile, "ERROR: Connection Error (%s)", error.message);
         dbus_error_free (&error);
     }
     if (connection == NULL)
@@ -1154,16 +1135,16 @@ spy (char *filter)
     dbus_bus_add_match (connection, eavesfilter, &error);
     // TODO: useless here?
     dbus_connection_flush (connection);
+
     if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Bad filter: %s\n", error.message);
-        puts("Filter syntax is as defined by D-Bus specification. Void filter will catch all messages. Example:");
-        puts("  \"type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'\"");
-        exit (1);
+        fprintf (logfile, "ERROR: Bad filter (%s).\n", error.message);
+        fprintf(logfile, "==> Filter syntax is as defined by D-Bus specification. Void filter will catch all messages.\n==> Example:\n");
+        fprintf(logfile, "==>    \"type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'\"\n");
+        return;
     }
 
-    // TODO: put this line to log later.
-    printf ("### Filter: %s\n", eavesfilter);
+    fprintf (logfile,"NOTE: Filter in use is %s\n", eavesfilter);
     
     // World available array containing all messages.
     message_array = json_mkarray();
@@ -1228,6 +1209,33 @@ run_daemon ()
 }
 #endif
 
+static void 
+prepare_file (const char* path, FILE** file, const char* mode)
+{
+    if (path == NULL)
+        *file = stdout;
+    else
+    {
+        if (strcmp(mode,"w") == 0)
+        {
+            // Check if file exists, and if user allowed it to be overwritten.
+            if (option_force_overwrite == false && access (path, F_OK) == 0)
+            {
+                fprintf(logfile, "WARNING: File exists! Switching to standard output.\n");
+                return;
+            }
+        }
+
+        // Note: binary mode is useless on POSIX.
+        *file = fopen (path, mode);
+        if (*file == NULL)
+        {
+            perror (path);
+            return;
+        }
+    }
+}
+
 static void
 print_help (const char *executable)
 {
@@ -1266,12 +1274,15 @@ print_version ()
     /* puts ("There is NO WARRANTY, to the extent permitted by law.\n"); */
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 static void
 nice_exit (int sig)
 {
     doneflag=1;
     puts ("\nClosing...\n");
 }
+#pragma GCC diagnostic pop
 
 
 int
@@ -1285,6 +1296,12 @@ main (int argc, char **argv)
 
     enum Queries query = QUERY_NONE;
     int exclusive_opt = 0;
+
+    // Set default log and output.
+    logfile = stderr;
+    output = stdout;
+    bool set_output = false;
+    bool set_logfile = false;
 
     // Catch SIGINT (Ctrl-C).
     struct sigaction act;
@@ -1302,9 +1319,9 @@ main (int argc, char **argv)
     // Fork variables.
     pid_t pid, sid;
     bool daemonize = false;
-    while ((c = getopt (argc, argv, ":adfhH:i:I:ln:o:p:vu:")) != -1)
+    while ((c = getopt (argc, argv, ":adfhH:i:I:L:ln:o:p:vu:")) != -1)
 #else
-    while ((c = getopt (argc, argv, ":afhH:i:I:ln:o:p:vu:")) != -1)
+    while ((c = getopt (argc, argv, ":afhH:i:I:L:ln:o:p:vu:")) != -1)
 #endif
     {
         switch (c)
@@ -1332,11 +1349,18 @@ main (int argc, char **argv)
             return 0;
         case 'i':
             input_path = optarg;
+            prepare_file(input_path, &input, "r");
             break;
         case 'I':
             exclusive_opt++;
             query = QUERY_INTROSPECT;
             break;
+
+        case 'L':
+            logfile_path = optarg;
+            set_logfile = true;
+            break;
+
         case 'l':
             exclusive_opt++;
             query = QUERY_LIST_NAMES;
@@ -1345,9 +1369,12 @@ main (int argc, char **argv)
             exclusive_opt++;
             query = QUERY_GET_NAME_OWNER;
             break;
+
         case 'o':
             output_path = optarg;
+            set_output=true;
             break;
+
         case 'p':
             exclusive_opt++;
             query = QUERY_GET_CONNECTION_UNIX_PROCESS_ID;
@@ -1360,12 +1387,10 @@ main (int argc, char **argv)
             query = QUERY_GET_CONNECTION_UNIX_USER;
             break;
         case ':':
-            // TODO: log this.
-            printf ("-%c needs an argument.\n", optopt);
+            fprintf (logfile, "ERROR: -%c needs an argument.\n", optopt);
             return 1;
         case '?':
-            // TODO: log this.
-            printf ("Unknown argument %c.\n", optopt);
+            fprintf (logfile, "ERROR: Unknown argument %c.\n", optopt);
             return 1;
         default:
             print_help (argv[0]);
@@ -1373,12 +1398,18 @@ main (int argc, char **argv)
         }
     }
 
+    if (set_logfile)
+        prepare_file(logfile_path, &logfile, "a");
+
     if (exclusive_opt > 1)
     {
-        // TODO: log this.
-        puts("Mutually exclusive arguments were given.");
+        fprintf(logfile, "ERROR: Mutually exclusive arguments were given.\n");
         return 1;
     }
+
+
+    if (set_output)
+        prepare_file(output_path, &output, "w");
 
 
     // TODO: check if useful.
@@ -1440,7 +1471,7 @@ main (int argc, char **argv)
                     json_find_member(
                         query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
 
-            printf ("%s\n", source_node->string_);
+            fprintf (output, "%s\n", source_node->string_);
 
             return 0;
         default:
@@ -1489,18 +1520,13 @@ main (int argc, char **argv)
 
         // WARNING: considering that all remaining args are arguments may be
         // POSIXLY_INCORRECT.  TODO: check behaviour of when POSIXLY_CORRECT is set.
+
         char * filter;
         if (argc-optind != 1)
             filter = NULL;
         else
             filter = argv[optind];
 
-        /* int i; */
-        /* for (i = optind; i < argc; i++) */
-        /* { */
-        /*     printf ("%s\n", argv[i]); */
-        /* } */
-        // TODO: add filters
         spy(filter);
     }
 
@@ -1511,6 +1537,9 @@ main (int argc, char **argv)
 
     if (output != NULL && output != stdout)
         fclose(output);
+
+    if (logfile != NULL && logfile != stderr)
+        fclose(logfile);
 
     if (input != NULL)
         fclose(output);

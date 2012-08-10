@@ -6,7 +6,6 @@
 -Add info: signature / duration, message size
 -Error log
 
--Getopt management
 -Daemon socket: get term massage, status, spy, (opt: web output, [-P PORT])
 
 -Clean test
