@@ -1,4 +1,6 @@
+################################################################################
 ## Dahsee version
+################################################################################
 APPNAME = "Dahsee"
 VERSION = "0.1"
 AUTHOR = "Pierre Neidhardt"
@@ -6,22 +8,29 @@ AUTHOR = "Pierre Neidhardt"
 YEAR = "2012"
 
 ## UI Support
-UI_WEB ?= -DDAHSEE_UI_WEB
+## Use '0' to turn off, anything else to turn on.
+UI_WEB ?= 0
 
-CFLAGS += $(UI_WEB)
+## Customize below to fit your system
+# CFLAGS ?= -g3 -O0
+CFLAGS ?= -Os
+
+## Paths
+PREFIX ?= /usr/local
+
+##==============================================================================
+## End of user configuration
+##==============================================================================
+CC=gcc
+RM=rm -f
+
 CFLAGS += -DAPPNAME=\"${APPNAME}\"
 CFLAGS += -DVERSION=\"${VERSION}\"
 CFLAGS += -DAUTHOR=\"${AUTHOR}\"
 CFLAGS += -DYEAR=\"${YEAR}\"
 
+CFLAGS += -DDAHSEE_UI_WEB=$(UI_WEB)
 
-## Customize below to fit your system
-CFLAGS+=-g3 -O0
-# CFLAGS+=-Os
-
-## Paths
-PREFIX = /usr/local
-
-## Tools
-CC=gcc
-RM=rm -f
+##==============================================================================
+## End of configuration
+##==============================================================================

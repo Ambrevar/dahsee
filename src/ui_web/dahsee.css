@@ -1,0 +1,26 @@
+body
+{
+    color:#cecece;
+    background:black;
+}
+
+h1
+{
+    color:#cecece;
+}
+
+p
+{
+    color:rgb(0,0,255);
+}
+
+a {
+    color:red
+}
+
+.odd {
+    background-color:gray;
+}
+.even {
+    background-color:#404040;
+}

@@ -24,10 +24,11 @@ CFLAGS+=-I "ccan/json/"
 SRC+=ccan/json/json.c
 
 ## For Web UI
-SRC+=ui_web.c
+ifneq ($(UI_WEB),0)
+	SRC+=ui_web.c
+	LDFLAGS+=$$(pkg-config --libs libmicrohttpd)
+endif
 
-## For microhttpd 
-LDFLAGS+=$$(pkg-config --libs libmicrohttpd)
 
 BIN=dahsee
 SRC+=dahsee.c

@@ -4,36 +4,72 @@
 
         Copyright 2012 Pierre Neidhardt <ambrevar [at] gmail [dot] com>
 
+
+Description
+-----------
+
+D-Bus development can be quiet painful because of the lack of analysis and
+monitoring tools.
+
+The dbus-monitor, while light and quick, may lack some features to you. There is
+some other tools out there, but sometimes poorly finished, or coming with too
+much requirements and dependencies for compilation or execution that they do not
+exactly fit what could be meant by "system developement tools".
+
+Dahsee aims to be full featured while being lightweight and simple.
+* Built in C.
+* There is no dependency but D-Bus and a C library.
+* The source code for the main program is a single C file.
+* The program is only one executable that is less than 50 KB.
+
+Features:
+* D-Bus messages filtering.
+* Comprehensive message description: timestamp, arguments, data payload, etc.
+* Statistics over scanned massages.
+* Comprehensive details about applications registered on the bus.
+* The configurable and clear output to terminal can be easily parsed and piped
+  to other application (as well as to itself).
+
 Configuration
 -------------
 
 The only required dependency is D-Bus. You will need it for compilation and
 runtime.
 
+It should compile and run on any POSIX system where D-Bus can run.  Dahsee
+should run on any POSIX plateform, but as of 2012-08-09, this still needs
+confirmation.
+
 Optionally you will need microhttpd (a.k.a. libmicrohttpd) for the Web
 interface.
+
+Specify your compilation and installation option in 'config.mk'.
+
 
 Building
 --------
 
   $ make
 
+
 Installation
 ------------
 
   $ make install
 
-Manuals
--------
+
+Further reading
+---------------
 
   $ man dahsee
 
 
-Git Repository
---------------
+Home
+----
 
-Clone this repository
-git clone https://ambrevar@bitbucket.org/ambrevar/dahsee.git
+Git repository:
+https://ambrevar@bitbucket.org/ambrevar/dahsee.git
+
 
 Hacking
 -------

@@ -4,15 +4,22 @@
 -Make JSON lib C99 compliant.
 -Web interface.
 -Add info: signature / duration, message size
+-Error log
 
--Sort by time / index ?
--Index ? Bus name, Interface, Object, Member, Signal?
+-Getopt management
+-Daemon socket: get term massage, status, spy, (opt: web output, [-P PORT])
 
+-Clean test
+-Clean code
+-Clean makefile
+-man page
+
+-Curses.
+-GUI.
 -Handle system bus + custom addresses.
--Storage: JSON with dynamic jansson link.
--Storage: PCAP.
+
+-JSON with dynamic jansson link ?
+-Export PCAP.
 -Export report PDF.
 -Graphs.
 -Kernel tracing tool information? (e.g. strace.)
--Curses.
--GUI.
