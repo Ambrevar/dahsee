@@ -20,37 +20,11 @@
 
 #include <dbus/dbus.h>
 
-// Options
-static volatile sig_atomic_t doneflag = 0;
-static const char *output_path = NULL;
-static bool option_force_overwrite = false;
-
 // Optional UI support
 #if DAHSEE_UI_WEB != 0
 #    include "ui_web.h"
 #endif
 
-/**
- * Timestamps
- *
- * time_begin serves as chrono reference.
- * time_end serves as chrono stop.
- * How to use the results:
- *
- *   printf ("%lu.", time_end.tv_sec - time_begin.tv_sec);
- *   printf ("%.6lu\n", time_end.tv_usec - time_begin.tv_usec);
- *
- */
-// TODO: not used. Remove?
-/* static struct timeval time_begin; */
-/* static struct timeval time_end; */
-
-// TODO: check Apple support.
-#ifdef __APPLE__
-#    define TIME_FORMAT "%s\t%lu\t%d"
-#else
-#    define TIME_FORMAT "%s\t%lu\t%lu"
-#endif
 
 /**
  * JSON
@@ -59,15 +33,66 @@ static bool option_force_overwrite = false;
  * Let's use an embedded implementation here.
  */
 #include "json.h"
-#define JSON_FORMAT "  "
-#define JSON_FORMAT_NONE ""
+
+#define DBUS_JSON_TYPE "type"
+#define DBUS_JSON_SEC "sec"
+#define DBUS_JSON_USEC "usec"
+#define DBUS_JSON_HOUR "hour"
+#define DBUS_JSON_MINUTE "minute"
+#define DBUS_JSON_SECOND "second"
+#define DBUS_JSON_TIME_HUMAN "time_human"
+#define DBUS_JSON_SENDER "sender"
+#define DBUS_JSON_DESTINATION "destination"
+#define DBUS_JSON_SERIAL "serial"
+#define DBUS_JSON_REPLY_SERIAL "reply_serial"
+#define DBUS_JSON_PATH "path"
+#define DBUS_JSON_INTERFACE "interface"
+#define DBUS_JSON_MEMBER "member"
+#define DBUS_JSON_ERROR "error"
+#define DBUS_JSON_METHOD_CALL "method_call"
+#define DBUS_JSON_METHOD_RETURN "method_return"
+#define DBUS_JSON_SIGNAL "signal"
+#define DBUS_JSON_ERROR_NAME "error_name"
+#define DBUS_JSON_ARGS "arg"
+#define DBUS_JSON_UNKNOWN "unknown"
+
+#define DBUS_JSON_ARG_TYPE "type"
+#define DBUS_JSON_ARG_VALUE "value"
+#define DBUS_JSON_ARG_ARRAYTYPE "arraytype"
+
+
+
+/******************************************************************************/
+/* Options                                                                    */
+/******************************************************************************/
+enum OutputFormat
+{
+    FORMAT_JSON,
+    FORMAT_PROFILE,
+    FORMAT_XML
+};
+static volatile sig_atomic_t doneflag = 0;
+// TODO: check if output is alwaus properly closed on exit.
+static FILE* output = NULL;
+static FILE* input = NULL;
+static const char *output_path = NULL;
+static const char *input_path = NULL;
+static bool option_force_overwrite = false;
+static int option_output_format = FORMAT_JSON;
 // Contains the whole bunch of messages caught using spy();
 static JsonNode *message_array ;
+#define JSON_FORMAT "  "
+#define JSON_FORMAT_NONE ""
+
+
+/******************************************************************************/
+/* Functions                                                                  */
+/******************************************************************************/
 
 static JsonNode*
 json_import(const char * inputpath)
 {
-    char *input;
+    char *inputstring;
     FILE* inputfile;
     long pos;
 
@@ -83,16 +108,16 @@ json_import(const char * inputpath)
     fseek(inputfile, 0, SEEK_SET);
 
     // WARNING: it is important not to forget the terminating null byte!
-    input = malloc((pos+1)*sizeof(char));
+    inputstring = malloc((pos+1)*sizeof(char));
     fread(input, sizeof(char), pos, inputfile);
     fclose(inputfile);
-    input[pos]='\0';
+    inputstring[pos]='\0';
 
     // Parsing.
     JsonNode* imported_json=NULL;
-    imported_json = json_decode(input);
+    imported_json = json_decode(inputstring);
 
-    free(input);
+    free(inputstring);
     return imported_json;
 }
 
@@ -131,10 +156,6 @@ json_import(const char * inputpath)
  *  printf ("\n");
  */
 
-
-// TODO: check if output is alwaus properly closed on exit.
-static FILE* output = NULL;
-
 void
 json_print (JsonNode * message)
 {
@@ -172,7 +193,7 @@ json_print (JsonNode * message)
 
 /**
  * XML support. Since we use JSON internally, XML is not convenient. So we
- * implement our own 100 lines XML-to-JSON parser.
+ * implement our own 150 lines XML-to-JSON parser.
  */
 #define XML_DELIMS_NODES "<>"
 #define XML_DELIMS_PROPERTIES " "
@@ -185,8 +206,8 @@ json_print (JsonNode * message)
 #define XML_NODE_ARG "arg"
 
 #define XML_PROPERTY_NAME "name"
-#define XML_PROPERTY_TYPE "type"        // ARG only
-#define XML_PROPERTY_DIRECTION "direction"      // ARG only
+#define XML_PROPERTY_TYPE "type"
+#define XML_PROPERTY_DIRECTION "direction"
 
 #define XML_VALUE_DIRECTION_IN "in"
 #define XML_VALUE_DIRECTION_OUT "out"
@@ -260,28 +281,6 @@ struct xml_dict dbus_value_type_table[] = {
  *     </method>
  *   </interface>
  * </node>
-
-
- * Output:
- *
- * [
- *  { "name" : "objectA",
- *     "interface" = [
-          { "name" = "interfaceX",
-            "mathod": [
-              {
-               "name" : "method1"
-               "arg": [
-                 {
-                   "direction": "in"
-                   "type":"as"
-                 }
-                 {
-                   "direction": "in"
-                   "type":"as"
-                 }
-               ]
-              }
  */
 
 
@@ -295,15 +294,16 @@ dbus_xml_parser (char * source)
     // Node where current_node is being added.
     struct JsonNode* last_node_ptr;
 
-    // Remember the last visited member to add arguments to the right one.
-    // The two variables are used to get access to appropriate array.
+    // The two variables are used to get access to the appropriate array.
     struct JsonNode* last_member_ptr = NULL;
     struct JsonNode* last_interface_ptr = NULL;
 
     char *token;
 
-    char *property;             // Name, Type, Direction 
-    char *value;                // Property value
+    // Name, Type, Direction 
+    char *property;
+    // Property value
+    char *value;
 
     char *saveptr1, *saveptr2, *saveptr3;
 
@@ -319,7 +319,8 @@ dbus_xml_parser (char * source)
             break;
 
         // Skip space between XML nodes.
-        // WARNING: this works if there is ONLY one node per line, and '\n' right after it.
+        // WARNING: this works if there is ONLY one node per line, and '\n'
+        // right after it.
         if (token[0] == '\n')
             continue;
 
@@ -334,7 +335,7 @@ dbus_xml_parser (char * source)
         if (token == NULL)
             continue;
 
-        // Main switch. This part is not safe at all if input is badly
+        // Main switch. WARNING: this part is not safe at all if input is badly
         // formatted.
         if (strcmp (token, XML_NODE_OBJECT) == 0)
             last_node_ptr = result; 
@@ -342,42 +343,43 @@ dbus_xml_parser (char * source)
         {
             last_node_ptr = result->children.tail;
 
-            if (json_find_member(last_node_ptr, "interface")==NULL)
-                json_append_member(last_node_ptr, "interface", json_mkarray());
-            last_node_ptr=json_find_member(last_node_ptr, "interface");
+            if (json_find_member(last_node_ptr, XML_NODE_INTERFACE)==NULL)
+                json_append_member(last_node_ptr, XML_NODE_INTERFACE, json_mkarray());
+            last_node_ptr=json_find_member(last_node_ptr, XML_NODE_INTERFACE);
             last_interface_ptr=last_node_ptr;
         }
         else if (strcmp (token, XML_NODE_METHOD) == 0)
         {
             last_node_ptr = last_interface_ptr->children.tail;
 
-            if (json_find_member(last_node_ptr, "method")==NULL)
-                json_append_member(last_node_ptr, "method", json_mkarray());
-            last_node_ptr=json_find_member(last_node_ptr, "method");
+            if (json_find_member(last_node_ptr, XML_NODE_METHOD)==NULL)
+                json_append_member(last_node_ptr, XML_NODE_METHOD, json_mkarray());
+            last_node_ptr=json_find_member(last_node_ptr, XML_NODE_METHOD);
             last_member_ptr=last_node_ptr;
         }
         else if (strcmp (token, XML_NODE_SIGNAL) == 0)
         {
             last_node_ptr = last_interface_ptr->children.tail;
 
-            if (json_find_member(last_node_ptr, "signal")==NULL)
-                json_append_member(last_node_ptr, "signal", json_mkarray());
-            last_node_ptr=json_find_member(last_node_ptr, "signal");
+            if (json_find_member(last_node_ptr, XML_NODE_SIGNAL)==NULL)
+                json_append_member(last_node_ptr, XML_NODE_SIGNAL, json_mkarray());
+            last_node_ptr=json_find_member(last_node_ptr, XML_NODE_SIGNAL);
             last_member_ptr=last_node_ptr;
         }
         else if (strcmp (token, XML_NODE_ARG) == 0)
         {
             last_node_ptr = last_member_ptr->children.tail;
 
-            if (json_find_member(last_node_ptr, "args")==NULL)
-                json_append_member(last_node_ptr, "args", json_mkarray());
-            last_node_ptr=json_find_member(last_node_ptr, "args");
+            if (json_find_member(last_node_ptr, XML_NODE_ARG)==NULL)
+                json_append_member(last_node_ptr, XML_NODE_ARG, json_mkarray());
+            last_node_ptr=json_find_member(last_node_ptr, XML_NODE_ARG);
         }
 
         // Should never happen if input is as expected.
         else
         {
-            printf ("ERROR2: could not recognize token (%s)\n", token);
+            // TODO: lig this.
+            printf ("ERROR: could not recognize token (%s)\n", token);
             break;
         }
 
@@ -403,13 +405,9 @@ dbus_xml_parser (char * source)
                 continue;
 
             if (strcmp (property, XML_PROPERTY_NAME) == 0)
-                json_append_member(current_node, "name", json_mkstring(value));
-                /* printf ("\tName: %s\n", value); */
+                json_append_member(current_node, XML_PROPERTY_NAME, json_mkstring(value));
             else if (strcmp (property, XML_PROPERTY_DIRECTION) == 0)
-            {
-                json_append_member(current_node, "direction", json_mkstring(value));
-                /* printf ("\tDirection: %s\n", value); */
-            }
+                json_append_member(current_node, XML_PROPERTY_DIRECTION, json_mkstring(value));
             else if (strcmp (property, XML_PROPERTY_TYPE) == 0)
             {
                 size_t i,j;
@@ -434,7 +432,7 @@ dbus_xml_parser (char * source)
                     if (dbus_value_type_table[j].key == '\0')
                     {
                         // TODO: log this.
-                        printf ("==> ERROR: Type char (%c) not known.\n", value[i]);
+                        printf ("ERROR: Type char (%c) not known.\n", value[i]);
                         break;
                     }
                 }
@@ -447,12 +445,13 @@ dbus_xml_parser (char * source)
                     strcat(arg_string, array_ptr[i]);
                 }
 
-                json_append_member(current_node, "types", json_mkstring(arg_string));
+                json_append_member(current_node, XML_PROPERTY_TYPE, json_mkstring(arg_string));
             }
             // Should never happen.
             else
             {
-                printf ("ERROR3: could not recognize token (%s)\n", token);
+                // TODO: log this.
+                printf ("ERROR: could not recognize token (%s)\n", token);
                 break;
             }
 
@@ -485,74 +484,13 @@ dbus_xml_parser (char * source)
  * DBUS_TYPE_UINT64
  * DBUS_TYPE_UNIX_FD
  * DBUS_TYPE_VARIANT
- *
- * DBUS_STRUCT_BEGIN_CHAR_AS_STRING
- * DBUS_STRUCT_END_CHAR_AS_STRING
- * DBUS_TYPE_ARRAY_AS_STRING
- * DBUS_TYPE_BOOLEAN_AS_STRING
- * DBUS_TYPE_BYTE_AS_STRING
- * DBUS_TYPE_DICT_ENTRY_AS_STRING
- * DBUS_TYPE_DOUBLE_AS_STRING
- * DBUS_TYPE_INT16_AS_STRING
- * DBUS_TYPE_INT32_AS_STRING
- * DBUS_TYPE_INT64_AS_STRING
- * DBUS_TYPE_INVALID_AS_STRING
- * DBUS_TYPE_OBJECT_PATH_AS_STRING
- * DBUS_TYPE_SIGNATURE_AS_STRING
- * DBUS_TYPE_STRING_AS_STRING
- * DBUS_TYPE_STRUCT_AS_STRING
- * DBUS_TYPE_UINT16_AS_STRING
- * DBUS_TYPE_UINT32_AS_STRING
- * DBUS_TYPE_UINT64_AS_STRING
- * DBUS_TYPE_UNIX_FD_AS_STRING
- * DBUS_TYPE_VARIANT_AS_STRING
  */
 
 
 /**
- * args = [
- {
- "type": "string"
- "value": "blah"
- }
-
- {
- "type": "int32"
- "value": "1234"
- }
-
- {
- "type": "array"
- "value": {
- "arraytype": "int64"
- "arrayvalue": [ 1,2,3] <= rec with find_member("value"); 
- }
- }
- ]
-
+ * Since arguments in D-Bus can be complicated stuff, we dedicate a function to
+ * transform the received arguments to a JSON structure.
  */
-
-/**
- * JSON Messages Specification
- */
-#define DBUS_JSON_TYPE "type"
-#define DBUS_JSON_SEC "sec"
-#define DBUS_JSON_USEC "usec"
-#define DBUS_JSON_SENDER "sender"
-#define DBUS_JSON_DESTINATION "destination"
-#define DBUS_JSON_SERIAL "serial"
-#define DBUS_JSON_REPLY_SERIAL "reply_serial"
-#define DBUS_JSON_PATH "path"
-#define DBUS_JSON_INTERFACE "interface"
-#define DBUS_JSON_MEMBER "member"
-#define DBUS_JSON_ERROR_NAME "error_name"
-#define DBUS_JSON_ARGS "args"
-
-#define DBUS_JSON_ARG_TYPE "type"
-#define DBUS_JSON_ARG_VALUE "value"
-#define DBUS_JSON_ARG_ARRAYTYPE "arraytype"
-
-
 struct JsonNode *
 args_mangler (DBusMessageIter * args)
 {
@@ -858,6 +796,9 @@ message_mangler (DBusMessage * message)
     // TIME
     struct timeval time_machine;
     struct tm *time_human;
+
+    // TODO: check APPLE support since it is supposed to have a different struct
+    // timeval.
     if (gettimeofday (&time_machine, NULL) < 0)
     {
         perror ("Could not get time.");
@@ -870,18 +811,18 @@ message_mangler (DBusMessage * message)
     /* time_human = localtime( &(time_machine.tv_sec) ); */
     time_human = gmtime (&(time_machine.tv_sec));
 
-    json_append_member (message_node, "sec",
+    json_append_member (message_node, DBUS_JSON_SEC,
                         json_mknumber (time_machine.tv_sec));
-    json_append_member (message_node, "usec",
+    json_append_member (message_node, DBUS_JSON_USEC,
                         json_mknumber (time_machine.tv_usec));
 
     // TODO: make this field optional.
     struct JsonNode *time_node = json_mkobject ();
-    json_append_member (time_node, "hour",
+    json_append_member (time_node, DBUS_JSON_HOUR,
                         json_mknumber (time_human->tm_hour));
-    json_append_member (time_node, "minute", json_mknumber (time_human->tm_min));
-    json_append_member (time_node, "second", json_mknumber (time_human->tm_sec));
-    json_append_member (message_node, "time_human", time_node);
+    json_append_member (time_node, DBUS_JSON_MINUTE, json_mknumber (time_human->tm_min));
+    json_append_member (time_node, DBUS_JSON_SECOND, json_mknumber (time_human->tm_sec));
+    json_append_member (message_node, DBUS_JSON_TIME_HUMAN, time_node);
 
     // TYPE
     switch (dbus_message_get_type (message))
@@ -889,31 +830,31 @@ message_mangler (DBusMessage * message)
         // TODO: check if serial is different / needed for error and method return.
     case DBUS_MESSAGE_TYPE_ERROR:
         json_append_member (message_node, DBUS_JSON_TYPE,
-                            json_mkstring ("error"));
+                            json_mkstring (DBUS_JSON_ERROR));
         flag = FLAG_SERIAL | FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
         break;
 
     case DBUS_MESSAGE_TYPE_METHOD_CALL:
         json_append_member (message_node, DBUS_JSON_TYPE,
-                            json_mkstring ("method_call"));
+                            json_mkstring (DBUS_JSON_METHOD_CALL));
         flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
         break;
 
     case DBUS_MESSAGE_TYPE_METHOD_RETURN:
         json_append_member (message_node, DBUS_JSON_TYPE,
-                            json_mkstring ("method_return"));
+                            json_mkstring (DBUS_JSON_METHOD_RETURN));
         flag = FLAG_SERIAL | FLAG_REPLY_SERIAL;
         break;
 
     case DBUS_MESSAGE_TYPE_SIGNAL:
         json_append_member (message_node, DBUS_JSON_TYPE,
-                            json_mkstring ("signal"));
+                            json_mkstring (DBUS_JSON_SIGNAL));
         flag = FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER;
         break;
 
     default:
         json_append_member (message_node, DBUS_JSON_TYPE,
-                            json_mkstring ("unknown"));
+                            json_mkstring (DBUS_JSON_UNKNOWN));
         flag =
             FLAG_SERIAL | FLAG_PATH | FLAG_INTERFACE | FLAG_MEMBER |
             FLAG_ERROR_NAME | FLAG_REPLY_SERIAL;
@@ -924,50 +865,50 @@ message_mangler (DBusMessage * message)
     // names. Well-knwwn names should be an option.
 
     // SENDER
-    json_append_member (message_node, "sender",
+    json_append_member (message_node, DBUS_JSON_SENDER,
                         json_mkstring (TRAP_NULL_STRING
                                        (dbus_message_get_sender (message))));
 
     // DESTINATION
-    json_append_member (message_node, "destination",
+    json_append_member (message_node, DBUS_JSON_DESTINATION,
                         json_mkstring (TRAP_NULL_STRING
                                        (dbus_message_get_destination
                                         (message))));
 
     // FLAGS
     if (flag & FLAG_SERIAL)
-        json_append_member (message_node, "serial",
+        json_append_member (message_node, DBUS_JSON_SERIAL,
                             json_mknumber (dbus_message_get_serial
                                            (message)));
 
     if (flag & FLAG_REPLY_SERIAL)
-        json_append_member (message_node, "reply_serial",
+        json_append_member (message_node, DBUS_JSON_SERIAL,
                             json_mknumber (dbus_message_get_reply_serial
                                            (message)));
 
     // TRAP_NULL_STRING is not needed here if specification is correctly handled.
     if (flag & FLAG_PATH)
-        json_append_member (message_node, "path",
+        json_append_member (message_node, DBUS_JSON_PATH,
                             json_mkstring (TRAP_NULL_STRING
                                            (dbus_message_get_path
                                             (message))));
 
     // Interface is optional for method calls.
     if (flag & FLAG_INTERFACE)
-        json_append_member (message_node, "interface",
+        json_append_member (message_node, DBUS_JSON_INTERFACE,
                             json_mkstring (TRAP_NULL_STRING
                                            (dbus_message_get_interface
                                             (message))));
 
     if (flag & FLAG_MEMBER)
-        json_append_member (message_node, "member",
+        json_append_member (message_node, DBUS_JSON_MEMBER,
                             json_mkstring (TRAP_NULL_STRING
                                            (dbus_message_get_member
                                             (message))));
 
     // TRAP_NULL_STRING is not needed here if specification is correctly handled.
     if (flag & FLAG_ERROR_NAME)
-        json_append_member (message_node, "error_name",
+        json_append_member (message_node, DBUS_JSON_ERROR_NAME,
                             json_mkstring (TRAP_NULL_STRING
                                            (dbus_message_get_error_name
                                             (message))));
@@ -977,6 +918,7 @@ message_mangler (DBusMessage * message)
     DBusMessageIter args;
     if (!dbus_message_iter_init (message, &args))
     {
+        // TODO: log this.
         fprintf (stderr, "Message has no arguments!\n");
         return NULL;
     }
@@ -988,7 +930,7 @@ message_mangler (DBusMessage * message)
     }
     while (dbus_message_iter_next (&args));
 
-    json_append_member (message_node, "args", args_array);
+    json_append_member (message_node, DBUS_JSON_ARGS, args_array);
 
     return message_node;
 }
@@ -1003,6 +945,7 @@ message_mangler (DBusMessage * message)
  */
 enum Queries
 {
+    QUERY_NONE,
     QUERY_LIST_NAMES,
     QUERY_ACTIVATABLE_NAMES,
     QUERY_GET_NAME_OWNER,
@@ -1153,21 +1096,11 @@ query_bus (enum Queries query, char *parameter)
     // Free the pending message handle.
     dbus_pending_call_unref (pending);
 
-
     // Read the arguments.
     JsonNode *message_node = message_mangler (message);
 
-    if (message_node != NULL)
-    {
-
-        /* json_print (json_find_member(json_find_element(json_find_member (message_node, "args"),0),"value"), output); */
-        /* json_print (json_find_member (message_node, "args")); */
-        /* json_delete (message_node); */
-        /* fclose(output); */
-        dbus_message_unref (message);
-    }
-
     // free reply and close connection
+    dbus_message_unref (message);
     dbus_connection_unref (connection);
 
     return message_node;
@@ -1176,11 +1109,7 @@ query_bus (enum Queries query, char *parameter)
 
 /**
  * Eavesdrop messages and store them internally. Parameter is a user-defined
- * filter. Filter syntax is as defined by D-Bus specification. Example:
- *
- *   "type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'"
- *
- * If filter=="all", then all messages are handled.
+ * filter.
  */
 
 #define EAVES "eavesdrop=true"
@@ -1194,13 +1123,11 @@ spy (char *filter)
     DBusMessage *message = NULL;
 
     if (filter==NULL)
-    {
         filter = "";
-    }
 
     /**
      * Message filters.
-     * Type are among:
+     * Type is among:
      * -signal
      * -method_call
      * -method_return
@@ -1229,7 +1156,9 @@ spy (char *filter)
     dbus_connection_flush (connection);
     if (dbus_error_is_set (&error))
     {
-        fprintf (stderr, "Match Error (%s)\n", error.message);
+        fprintf (stderr, "Bad filter: %s\n", error.message);
+        puts("Filter syntax is as defined by D-Bus specification. Void filter will catch all messages. Example:");
+        puts("  \"type='signal',sender='org.gnome.TypingMonitor',interface='org.gnome.TypingMonitor'\"");
         exit (1);
     }
 
@@ -1285,6 +1214,7 @@ char* html_message(JsonNode* message)
     return result;
 }
 
+#if DAHSEE_UI_WEB != 0
 static void
 run_daemon ()
 {
@@ -1296,14 +1226,17 @@ run_daemon ()
 
     return;
 }
+#endif
 
 static void
 print_help (const char *executable)
 {
-    printf ("Usage: %s ...\n", executable);
+    printf ("Usage: %s [OPTION <ARG>] [<FILTER>]\n", executable);
 
     puts ("  -a        List activatable bus names.");
+#ifdef DAHSEE_UI_WEB
     puts ("  -d        Daemonize.");
+#endif
     puts ("  -f        Force overwriting when output file exists.");
     puts ("  -h        Print this help.");
     puts ("  -i NAME   Return introspection of NAME.");
@@ -1311,14 +1244,16 @@ print_help (const char *executable)
     puts ("  -n NAME   Return unique name associated to NAME.");
     puts ("  -o FILE   Write output to FILE (default is stdout).");
     puts ("  -p        Return PID associated to NAME.");
-    puts ("  -s FILTER Spy signals. FILTER syntax follows D-Bus specification. If FILTER is empty, all messages are caught.");
     puts ("  -u NAME   Return UID who owns NAME.");
     puts ("  -v        Print version.");
+
     puts ("");
     puts ("Dahsee provides two main features:");
     puts (" * Queries to D-Bus session which let you get various details about applications, registered names, etc.");
-    puts (" * Dahsee can list and filter all the messages travelling through D-Bus.");
-    puts ("Further details on D-Bus and Dahsee are available from the manpage. [see DAHSEE(1)]");
+    puts (" * Dahsee can list and filter all the messages travelling through D-Bus. This is the default behavior.");
+
+    puts ("");
+    puts ("FILTER syntax follows D-Bus specification. If FILTER is empty, all messages are caught. Further details on D-Bus and Dahsee are available from the man page. [see DAHSEE(1)]");
 }
 
 static void
@@ -1326,9 +1261,9 @@ print_version ()
 {
     printf ("%s %s\n", APPNAME, VERSION);
     printf ("Copyright © %s %s\n", YEAR, AUTHOR);
-    /* printf ("MIT License\n"); */
-    /* printf ("This is free software: you are free to change and redistribute it.\n"); */
-    /* printf ("There is NO WARRANTY, to the extent permitted by law.\n"); */
+    /* puts ("MIT License\n"); */
+    /* puts ("This is free software: you are free to change and redistribute it.\n"); */
+    /* puts ("There is NO WARRANTY, to the extent permitted by law.\n"); */
 }
 
 static void
@@ -1338,26 +1273,18 @@ nice_exit (int sig)
     puts ("\nClosing...\n");
 }
 
-// TODO: check if useful.
-/* Set stdout to be unbuffered; this is basically so that if people
- * do dbus-monitor > file, then send SIGINT via Control-C, they
- * don't lose the last chunk of messages.
- */
-/* setvbuf (stdout, NULL, _IOLBF, 0); */
-
 
 int
 main (int argc, char **argv)
 {
-    // Fork variables.
-    bool daemonize = false;
-    pid_t pid, sid;
-
     // getopt() variables.
     int c;
     extern char *optarg;
     extern int optind;
     extern int optopt;
+
+    enum Queries query = QUERY_NONE;
+    int exclusive_opt = 0;
 
     // Catch SIGINT (Ctrl-C).
     struct sigaction act;
@@ -1371,102 +1298,158 @@ main (int argc, char **argv)
         return 1;
     }
 
-    // TODO: multiple optargs ?
-    JsonNode* source_node;
-    char* source_text;
-    while ((c = getopt (argc, argv, ":adfhH:i:I:ln:o:p:s:vu:")) != -1)
+#if DAHSEE_UI_WEB !=0
+    // Fork variables.
+    pid_t pid, sid;
+    bool daemonize = false;
+    while ((c = getopt (argc, argv, ":adfhH:i:I:ln:o:p:vu:")) != -1)
+#else
+    while ((c = getopt (argc, argv, ":afhH:i:I:ln:o:p:vu:")) != -1)
+#endif
     {
         switch (c)
         {
         case 'a':
-            json_print(query_bus (QUERY_ACTIVATABLE_NAMES, NULL));
-            return 0;
+            exclusive_opt++;
+            query = QUERY_ACTIVATABLE_NAMES;
+            break;
+
+#if DAHSEE_UI_WEB != 0
         case 'd':
+            exclusive_opt++;
             daemonize = true;
             break;
+#endif
+
         case 'f':
             option_force_overwrite = true;
             break;
         case 'H':
-            source_node = json_import(optarg);
-            source_text=html_message(source_node);
-            printf("%s\n",source_text);
-            json_delete(source_node);
-            free(source_text);
-            return 0;
+            option_output_format = FORMAT_XML;
+            break;
         case 'h':
             print_help (argv[0]);
             return 0;
         case 'i':
-            // TODO: combine with web and stats.
-            source_node = json_import(optarg);
-            json_print(source_node);
-            return 0;
+            input_path = optarg;
+            break;
         case 'I':
-            // TODO: two possible result (use option):
-
-            // XML-to-JSON.
-            source_node = json_find_member(
-                    json_find_element(
-                        json_find_member(
-                            query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
-
-            json_print(dbus_xml_parser(source_node->string_));
-
-            // Raw XML.
-            source_node = json_find_member(
-                    json_find_element(
-                        json_find_member(
-                            query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
-
-            printf ("%s\n", source_node->string_);
-
-            return 0;
+            exclusive_opt++;
+            query = QUERY_INTROSPECT;
+            break;
         case 'l':
-            json_print(query_bus (QUERY_LIST_NAMES, NULL));
-            return 0;
+            exclusive_opt++;
+            query = QUERY_LIST_NAMES;
+            break;
         case 'n':
-            json_print(query_bus (QUERY_GET_NAME_OWNER, optarg));
-            return 0;
+            exclusive_opt++;
+            query = QUERY_GET_NAME_OWNER;
+            break;
         case 'o':
             output_path = optarg;
             break;
         case 'p':
-            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg));
-            return 0;
-        case 's':
-            // TODO: optional argument ?
-            spy (optarg);
+            exclusive_opt++;
+            query = QUERY_GET_CONNECTION_UNIX_PROCESS_ID;
             break;
         case 'v':
             print_version ();
             return 0;
         case 'u':
-            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_USER, optarg));
-            return 0;
+            exclusive_opt++;
+            query = QUERY_GET_CONNECTION_UNIX_USER;
+            break;
         case ':':
-            // TODO: smarter?
-            if (optopt=='s')
-            {
-                spy (NULL);
-                return 0;
-            }
-            else
-            {
-                printf ("-%c needs an argument.\n", optopt);
-                break;
-            }
-            break;
+            // TODO: log this.
+            printf ("-%c needs an argument.\n", optopt);
+            return 1;
         case '?':
+            // TODO: log this.
             printf ("Unknown argument %c.\n", optopt);
-            break;
+            return 1;
         default:
             print_help (argv[0]);
             return 0;
         }
     }
 
-    if (daemonize == true)
+    if (exclusive_opt > 1)
+    {
+        // TODO: log this.
+        puts("Mutually exclusive arguments were given.");
+        return 1;
+    }
+
+
+    // TODO: check if useful.
+    /* Set stdout to be unbuffered; this is basically so that if people
+     * do dbus-monitor > file, then send SIGINT via Control-C, they
+     * don't lose the last chunk of messages.
+     */
+    /* setvbuf (stdout, NULL, _IOLBF, 0); */
+
+    // TODO: combine import file with web and stats.
+    /* source_node = json_import(optarg); */
+    /* json_print(source_node); */
+            
+    // TODO: handle output formats.
+    /* source_node = json_import(optarg); */
+    /* source_text=html_message(source_node); */
+    /* printf("%s\n",source_text); */
+    /* json_delete(source_node); */
+    /* free(source_text); */
+    /* return 0; */
+
+
+    if (query != QUERY_NONE)
+    {
+        JsonNode* source_node;
+
+        // Queries
+        switch (query)
+        {
+        case QUERY_LIST_NAMES:
+            json_print(query_bus (QUERY_LIST_NAMES, NULL));
+            break;
+        case QUERY_ACTIVATABLE_NAMES:
+            json_print(query_bus (QUERY_ACTIVATABLE_NAMES, NULL));
+            break;
+        case QUERY_GET_NAME_OWNER:
+            json_print(query_bus (QUERY_GET_NAME_OWNER, optarg));
+            break;
+        case QUERY_GET_CONNECTION_UNIX_USER:
+            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_USER, optarg));
+            break;
+        case QUERY_GET_CONNECTION_UNIX_PROCESS_ID:
+            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg));
+            break;
+        case QUERY_INTROSPECT:
+            // TODO: two possible result (use option):
+
+            // XML-to-JSON.
+            source_node = json_find_member(
+                json_find_element(
+                    json_find_member(
+                        query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
+
+            json_print(dbus_xml_parser(source_node->string_));
+
+            // Raw XML.
+            source_node = json_find_member(
+                json_find_element(
+                    json_find_member(
+                        query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
+
+            printf ("%s\n", source_node->string_);
+
+            return 0;
+        default:
+            break;
+        }
+    }
+#if DAHSEE_UI_WEB != 0
+    // Daemon
+    else if (daemonize == true)
     {
         /* Fork off the parent process */
         pid = fork ();
@@ -1499,18 +1482,38 @@ main (int argc, char **argv)
         // TODO: need to log somewhere, otherwise will go to terminal.
         run_daemon ();
     }
+#endif
+    else
+    {
+        // Eavesdrop bus messages. Default bhaviour.
+
+        // WARNING: considering that all remaining args are arguments may be
+        // POSIXLY_INCORRECT.  TODO: check behaviour of when POSIXLY_CORRECT is set.
+        char * filter;
+        if (argc-optind != 1)
+            filter = NULL;
+        else
+            filter = argv[optind];
+
+        /* int i; */
+        /* for (i = optind; i < argc; i++) */
+        /* { */
+        /*     printf ("%s\n", argv[i]); */
+        /* } */
+        // TODO: add filters
+        spy(filter);
+    }
 
 
     // Clean global stuff.
     if (message_array != NULL)
-    {
         json_delete (message_array);
-    }
 
     if (output != NULL && output != stdout)
-    {
         fclose(output);
-    }
+
+    if (input != NULL)
+        fclose(output);
 
     return 0;
 }
