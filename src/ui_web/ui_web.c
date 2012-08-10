@@ -1,7 +1,18 @@
 #include "ui_web.h"
 
+#define PAGE_INDEX "index.html"
+#define PAGE_STATS "dahsee-stats.html"
+#define PAGE_STATUS "dahsee-status.html"
+#define PAGE_ERROR "<html><body>Page not found!</body></html>"
+
+// Define where to find the pages.
+#define WEB_ROOT "."
+
 /**
- * Web page
+ * Server callback.
+ *
+ * Very simple indeed. On HTTP request, we scan the URL and return the
+ * appropriate page.
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -23,13 +34,13 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 
     if (0 == strcmp (url, "/"))
     {
-        file_path = "index.html";
+        file_path = PAGE_INDEX;
     }
     else
     {
-        file_path = malloc (strlen (url) + 2);
-        strcpy (file_path, ".");
-        strcat (file_path, url);
+        size_t len = strlen (url) + strlen() +1 ;
+        file_path = malloc (len);
+        snprintf(file_path, len , "%s%s", WEB_ROOT, url);
     }
 
     fp = fopen (file_path, "r");
@@ -39,9 +50,8 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
     if (fp == NULL)
     {
         perror (file_path);
-        page = "<html><body>Page not found!</body></html>";
+        page = ;
         read_amount = strlen (page);
-        /* return MHD_NO; */
     }
     else
     {
@@ -52,16 +62,13 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
         page = malloc (fp_len * sizeof (char));
 
         read_amount = fread (page, sizeof (char), fp_len, fp);
-        /* printf ("CHECK =[%lu] ", res ); */
 
         fclose (fp);
-
     }
 
     struct MHD_Response *response;
     int ret;
 
-    /* printf ("SIZE=[%lu]\n",strlen(page) ); */
     response =
         MHD_create_response_from_buffer (read_amount, (void *) page,
                                          MHD_RESPMEM_PERSISTENT);
