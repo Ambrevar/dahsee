@@ -28,13 +28,14 @@
 
 #include "ui_web.h"
 
-#define PAGE_INDEX "index.html"
+#define PAGE_INDEX "dahsee.html"
 #define PAGE_STATS "dahsee-stats.html"
 #define PAGE_STATUS "dahsee-status.html"
 #define PAGE_ERROR "<html><body>Page not found!</body></html>"
 
 // Define where to find the pages.
-#define WEB_ROOT "."
+// Use env XDG_DATA_DIRS
+#define WEB_ROOT "../data/"
 
 /**
  * Server callback.
@@ -51,40 +52,41 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
                       size_t * upload_data_size, void **con_cls)
 {
     // TODO: add to logfile.
-    printf ("URL=[%s]\n", url);
-    printf ("METHOD=[%s]\n", method);
-    printf ("VERSION=[%s]\n", version);
-    printf ("DATA=[%s]\n", upload_data);
-    printf ("DATA SIZE=[%lu]\n", *upload_data_size);
-
-    FILE *fp;
-    char *file_path;
+    fprintf (stderr, "URL=[%s]\n", url);
+    fprintf (stderr, "METHOD=[%s]\n", method);
+    fprintf (stderr, "VERSION=[%s]\n", version);
+    fprintf (stderr, "DATA=[%s]\n", upload_data);
+    fprintf (stderr, "DATA SIZE=[%lu]\n", *upload_data_size);
 
     if (0 == strcmp (url, "/"))
-    {
-        file_path = PAGE_INDEX;
-    }
-    else
-    {
-        size_t len = strlen (url) + strlen() +1 ;
-        file_path = malloc (len);
-        snprintf(file_path, len , "%s%s", WEB_ROOT, url);
-    }
+        // No url specified.
+        url = PAGE_INDEX;
 
+    // Append specified url to web page location.
+    char* file_path;
+    size_t len = strlen(WEB_ROOT) + strlen (url) + 1;
+    file_path = malloc (len);
+    snprintf(file_path, len , "%s%s", WEB_ROOT, url);
+
+    FILE *fp;
     fp = fopen (file_path, "r");
 
     size_t read_amount;
     char *page;
+
+    printf ("%s\n", file_path);
+
     if (fp == NULL)
     {
+        // Web page could not be found.
         perror (file_path);
-        page = ;
+        page = PAGE_ERROR;
         read_amount = strlen (page);
     }
     else
     {
         fseek (fp, 0, SEEK_END);
-        unsigned long fp_len = ftell (fp);
+        long fp_len = ftell (fp);
         fseek (fp, 0, SEEK_SET);
 
         page = malloc (fp_len * sizeof (char));
@@ -114,7 +116,7 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 }
 #pragma GCC diagnostic pop
 
-static void
+void
 run_server ()
 {
     struct MHD_Daemon *daemon;

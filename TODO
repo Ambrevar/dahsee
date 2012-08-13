@@ -8,7 +8,6 @@
 -Clean code
 -Clean makefile => condition for installation
 -man page
--Manage license.
 -Make JSON lib C99 compliant.
 
 -Curses.

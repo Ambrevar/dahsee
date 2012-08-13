@@ -96,6 +96,7 @@ static volatile sig_atomic_t doneflag = 0;
 
 // Paths and file descriptors for output and logfile.
 // TODO: handle input.
+// TODO: Use freopen() to change output and logfile. Then perror() can be used safely.
 static FILE* output = NULL;
 static FILE* logfile = NULL;
 static FILE* input = NULL;
@@ -142,13 +143,15 @@ json_import(const char * inputpath)
         perror("json_import");
     }
 
+    // WARNING: it is important not to forget the terminating null byte! We add
+    // +1 to 'pos' for that.
+
     // File buffering.
     fseek(inputfile, 0, SEEK_END);
-    pos = ftell(inputfile);
+    pos = ftell(inputfile) + 1;
     fseek(inputfile, 0, SEEK_SET);
 
-    // WARNING: it is important not to forget the terminating null byte!
-    inputstring = malloc((pos+1)*sizeof(char));
+    inputstring = malloc(pos*sizeof(char));
     fread(input, sizeof(char), pos, inputfile);
     fclose(inputfile);
     inputstring[pos]='\0';
@@ -1229,11 +1232,12 @@ static void
 run_daemon ()
 {
     // TODO: handle signal and eavesdrop on DBus.
-    for (;;)
-    {
-        sleep (60);
-    }
+    /* for (;;) */
+    /* { */
+    /*     sleep (60); */
+    /* } */
 
+    run_server();
     return;
 }
 #endif
