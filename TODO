@@ -1,20 +1,18 @@
--Manage license.
 -Export report HTML.
 -Stats. (count for bus name, interface, object, member, dest|| size -- largest, smallest, mean)
--Make JSON lib C99 compliant.
 -Web interface.
 -Add info: signature / duration, message size
--Error log
-
 -Daemon socket: get term massage, status, spy, (opt: web output, [-P PORT])
 
 -Clean test
 -Clean code
--Clean makefile
+-Clean makefile => condition for installation
 -man page
+-Manage license.
+-Make JSON lib C99 compliant.
 
 -Curses.
--GUI.
+-GTK.
 -Handle system bus + custom addresses.
 
 -JSON with dynamic jansson link ?
@@ -22,3 +20,13 @@
 -Export report PDF.
 -Graphs.
 -Kernel tracing tool information? (e.g. strace.)
+
+
+QUESTIONS:
+Why does "ListNames" method on DBUS_SERVICE_DBUS,DBUS_PATH_DBUS does not list org.freedesktop.DBus ?
+
+-Test if object name MUST begin with "/"
+-Test if Interface can be anything... Depends?
+-Get method call args
+-Test object hierarchy (if parent gets it; then child too, or vice versa)
+-how should react deamon argument?

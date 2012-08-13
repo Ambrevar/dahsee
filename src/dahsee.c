@@ -1,8 +1,29 @@
 /* -*- mode: C -*- */
 /*******************************************************************************
- * @file dahsee.c
- * @date 2012-06-28
- * @brief D-Bus monitoring tool
+ * dahsee.c
+ * 2012-08-13
+ *
+ * Dahsee - a D-Bus monitoring tool
+ *
+ * Copyright © 2012 Pierre Neidhardt
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  ******************************************************************************/
 
 // TODO: check if all message_mangler calls get properly cleaned.
@@ -68,8 +89,13 @@
 
 // TODO: check if output is always properly closed on exit.
 
+// This flag is used to shutdown properly when SIGINT is caught.  Since some
+// function (e.g. spy()) run an inifite loop, this is the only way to let them
+// know when it is time to quit.
 static volatile sig_atomic_t doneflag = 0;
 
+// Paths and file descriptors for output and logfile.
+// TODO: handle input.
 static FILE* output = NULL;
 static FILE* logfile = NULL;
 static FILE* input = NULL;
@@ -87,7 +113,11 @@ enum OutputFormat
     FORMAT_PROFILE,
     FORMAT_XML
 };
+// With this variable we can set the text format / structure of reports.
 static int option_output_format = FORMAT_JSON;
+
+// If the output is set to an existing file, it will not overwrite it by default
+// (outputting to stdout instead). We can use an option to force overwriting.
 static bool option_force_overwrite = false;
 
 // Specify the indentation in JSON output.
@@ -844,7 +874,7 @@ message_mangler (DBusMessage * message)
     }
 
     // TODO: get unique name for sender and destination instead of well-known
-    // names. Well-knwwn names should be an option.
+    // names. Well-known names should be an option.
 
     // SENDER
     json_append_member (message_node, DBUS_JSON_SENDER,
@@ -864,7 +894,7 @@ message_mangler (DBusMessage * message)
                                            (message)));
 
     if (flag & FLAG_REPLY_SERIAL)
-        json_append_member (message_node, DBUS_JSON_SERIAL,
+        json_append_member (message_node, DBUS_JSON_REPLY_SERIAL,
                             json_mknumber (dbus_message_get_reply_serial
                                            (message)));
 
@@ -936,7 +966,7 @@ enum Queries
 };
 
 struct JsonNode*
-query_bus (enum Queries query, char *parameter)
+query_bus (enum Queries query, const char *parameter)
 {
     DBusConnection *connection;
     DBusError error;
@@ -1036,8 +1066,7 @@ query_bus (enum Queries query, char *parameter)
     {
         // Append parameter.
         dbus_message_iter_init_append (message, &args);
-        if (!dbus_message_iter_append_basic
-            (&args, DBUS_TYPE_STRING, &parameter))
+        if (!dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &parameter))
         {
             fprintf (logfile, "ERROR: Out Of Memory!\n");
             return NULL;
@@ -1239,7 +1268,9 @@ prepare_file (const char* path, FILE** file, const char* mode)
 static void
 print_help (const char *executable)
 {
-    printf ("Usage: %s [OPTION <ARG>] [<FILTER>]\n", executable);
+    printf ("Usage: %s [FILTER]\n", executable);
+    printf ("   or: %s OPTION [ARG]\n\n", executable);
+    puts ("A D-Bus monitoring tool.\n");
 
     puts ("  -a        List activatable bus names.");
 #ifdef DAHSEE_UI_WEB
@@ -1247,21 +1278,25 @@ print_help (const char *executable)
 #endif
     puts ("  -f        Force overwriting when output file exists.");
     puts ("  -h        Print this help.");
-    puts ("  -i NAME   Return introspection of NAME.");
+    puts ("  -I NAME   Return introspection of NAME.");
     puts ("  -l        List registered bus names.");
     puts ("  -n NAME   Return unique name associated to NAME.");
     puts ("  -o FILE   Write output to FILE (default is stdout).");
-    puts ("  -p        Return PID associated to NAME.");
+    puts ("  -p NAME   Return PID associated to NAME.");
     puts ("  -u NAME   Return UID who owns NAME.");
     puts ("  -v        Print version.");
 
-    puts ("");
-    puts ("Dahsee provides two main features:");
-    puts (" * Queries to D-Bus session which let you get various details about applications, registered names, etc.");
-    puts (" * Dahsee can list and filter all the messages travelling through D-Bus. This is the default behavior.");
+    /* puts (""); */
+    /* puts ("Dahsee provides two main features:"); */
+    /* puts (" Queries to D-Bus session which let you get various details about applications, registered names, etc."); */
+    /* puts (""); */
+    /* puts (" Dahsee can list and filter all the messages travelling through D-Bus. This is the default behavior."); */
 
     puts ("");
-    puts ("FILTER syntax follows D-Bus specification. If FILTER is empty, all messages are caught. Further details on D-Bus and Dahsee are available from the man page. [see DAHSEE(1)]");
+    puts ("With no argument, it will catch D-Bus messages matching FILTER. The syntax follows D-Bus specification. If FILTER is empty, all messages are caught.");
+
+    puts("");
+    puts("See the DAHSEE(1) man page for more information.");
 }
 
 static void
@@ -1293,6 +1328,7 @@ main (int argc, char **argv)
     extern char *optarg;
     extern int optind;
     extern int optopt;
+    const char* parameter;
 
     enum Queries query = QUERY_NONE;
     int exclusive_opt = 0;
@@ -1353,6 +1389,7 @@ main (int argc, char **argv)
             break;
         case 'I':
             exclusive_opt++;
+            parameter = optarg;
             query = QUERY_INTROSPECT;
             break;
 
@@ -1367,6 +1404,7 @@ main (int argc, char **argv)
             break;
         case 'n':
             exclusive_opt++;
+            parameter = optarg;
             query = QUERY_GET_NAME_OWNER;
             break;
 
@@ -1377,6 +1415,7 @@ main (int argc, char **argv)
 
         case 'p':
             exclusive_opt++;
+            parameter = optarg;
             query = QUERY_GET_CONNECTION_UNIX_PROCESS_ID;
             break;
         case 'v':
@@ -1384,13 +1423,14 @@ main (int argc, char **argv)
             return 0;
         case 'u':
             exclusive_opt++;
+            parameter = optarg;
             query = QUERY_GET_CONNECTION_UNIX_USER;
             break;
         case ':':
-            fprintf (logfile, "ERROR: -%c needs an argument.\n", optopt);
+            fprintf (logfile, "ERROR: -%c needs an argument.\n==> Try '%s -h' for more information.\n", optopt, argv[0]);
             return 1;
         case '?':
-            fprintf (logfile, "ERROR: Unknown argument %c.\n", optopt);
+            fprintf (logfile, "ERROR: Unknown argument %c.\n==> Try '%s -h' for more information.\n", optopt, argv[0]);
             return 1;
         default:
             print_help (argv[0]);
@@ -1398,15 +1438,14 @@ main (int argc, char **argv)
         }
     }
 
-    if (set_logfile)
-        prepare_file(logfile_path, &logfile, "a");
-
     if (exclusive_opt > 1)
     {
-        fprintf(logfile, "ERROR: Mutually exclusive arguments were given.\n");
+        fprintf(logfile, "ERROR: Mutually exclusive arguments were given.\n==> Try '%s -h' for more information.\n",argv[0]);
         return 1;
     }
 
+    if (set_logfile)
+        prepare_file(logfile_path, &logfile, "a");
 
     if (set_output)
         prepare_file(output_path, &output, "w");
@@ -1446,13 +1485,13 @@ main (int argc, char **argv)
             json_print(query_bus (QUERY_ACTIVATABLE_NAMES, NULL));
             break;
         case QUERY_GET_NAME_OWNER:
-            json_print(query_bus (QUERY_GET_NAME_OWNER, optarg));
+            json_print(query_bus (QUERY_GET_NAME_OWNER, parameter));
             break;
         case QUERY_GET_CONNECTION_UNIX_USER:
-            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_USER, optarg));
+            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_USER, parameter));
             break;
         case QUERY_GET_CONNECTION_UNIX_PROCESS_ID:
-            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, optarg));
+            json_print(query_bus (QUERY_GET_CONNECTION_UNIX_PROCESS_ID, parameter));
             break;
         case QUERY_INTROSPECT:
             // TODO: two possible result (use option):
@@ -1461,7 +1500,7 @@ main (int argc, char **argv)
             source_node = json_find_member(
                 json_find_element(
                     json_find_member(
-                        query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
+                        query_bus (QUERY_INTROSPECT, parameter), DBUS_JSON_ARGS ),0), "value");
 
             json_print(dbus_xml_parser(source_node->string_));
 
@@ -1469,9 +1508,10 @@ main (int argc, char **argv)
             source_node = json_find_member(
                 json_find_element(
                     json_find_member(
-                        query_bus (QUERY_INTROSPECT, optarg), "args" ),0), "value");
+                        query_bus (QUERY_INTROSPECT, parameter), DBUS_JSON_ARGS ),0), "value");
 
-            fprintf (output, "%s\n", source_node->string_);
+            if (source_node != NULL)
+                fprintf (output, "%s\n", source_node->string_);
 
             return 0;
         default:

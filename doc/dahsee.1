@@ -1,0 +1,238 @@
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.\" Dahsee man page.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.ds appname Dahsee
+.ds cmdname dahsee
+.ds manname DAHSEE
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.TH \*[manname] 1 "August 2012" "\*[appname] 0.1" "User Commands"
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH NAME
+\*[appname] - a D-Bus monitoring tool.
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH SYNOPSIS
+.
+.SY \*[cmdname]
+.RI [ FILTER ]
+.YS
+.
+.SY \*[cmdname]
+.IR OPTION " [" ARG ]
+.YS
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH DESCRIPTION
+\*[appname] let the user inspect almost all what is possible to check on
+D-Bus. You can introspect applications, list all registered names on bus, or
+track messages matching a specific filter. See below for mode details on D-Bus.
+.P
+The goal is to provide a human readable view over the D-Bus process. JSON is
+used for this purpose, even if it may sometimes need a higher memory footprint.
+.P
+There is two ways to run \*[appname]. Either it retrieves a specific piece of
+information, or it spies for messages on the bus until it receives the signal
+interrupt (SIGINT).
+.
+.SS Monitor mode
+This is the default behaviour, i.e. running \*[cmdname] without arguments.
+Optionnaly \*[cmdname] accepts a string as argument which it will use as filter
+for messages.
+.
+.SS Query mode
+A single query is performed on the bus and the result is return in the specified
+form. See OPTIONS.
+.
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH OPTIONS
+.TP
+\fB-a\fR
+List activatable bus names.
+.TP
+\fB-d\fR
+Daemonize. (Web interface only).
+.TP
+\fB-f\fR
+Force overwriting when output file exists.
+.TP
+\fB-h\fR
+Print this help.
+.TP
+\fB-i \fINAME
+Return introspection of NAME.
+.TP
+\fB-l\fR
+List registered bus names.
+.TP
+\fB-n \fINAME
+Return unique name associated to NAME.
+.TP
+\fB-o \fIFILE
+Write output to FILE (default is stdout).
+.TP
+\fB-p\fR
+Return PID associated to NAME.
+.TP
+\fB-u \fINAME
+Return UID who owns NAME.
+.TP
+\fB-v\fR
+Print version.
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH NOTES
+D-Bus specification may be sometimes confusing. So we will tak the liberty to
+clarify some points here. We assume that you already know the purpose and main
+mechanism of D-Bus.
+.
+.SS
+Addresses
+There is 4 different kinds of D-Bus instances:
+.TP
+.I System bus
+1 per machine.
+It is primarily targeted at hardware and security. It is not meant to be
+requested by user.
+.TP
+.I Session bus
+1 per user session. All desktop applications run by user should connect to this
+bus.
+.TP
+.I Custom bus
+It is also possible to initiate a custom bus. It may be needed in some cases,
+like running a bus in a sandbox environment. It is not recommended for common
+usage, since D-Bus primary goal is allowing application to communicate to each
+other.
+.TP
+.I Direct connection
+2 applications may establish a connection between them. The communication is not
+seeable by anything else. This is also referred as 'peer-to-peer' connection.
+.P
+When refering to a specific instance, we speak of an
+.I address
+in the D-Bus jargon.
+.
+.
+.SS Applications
+An application can register on a bus and thus obtain a
+.I unique bus name
+in the form of ':NUMBER-NUMBER'.
+Optionaly the application can request a
+.I well-known name
+in the form of a reverse domain name, e.g. 'tld.example.app'.
+.P
+
+D-Bus
+.I objects are used to designate the very same objects used in application
+source code. There are used to group members. Note that they are not mandatory.
+An object is defined by a
+.I path
+for example '/tld/example/app/myobject'. A path should begin with a '/'.
+Note that D-Bus jargon is not very clear about the term used to designate an
+object, so basicly in the context of D-Bus 'object', 'path', and 'object path'
+mean the same thing. Please note however that a D-Bus object may refer to an
+actual application object, so if they are closely related, they are not strictly
+the same thing on a technical poitn of view.
+.
+.SS Messages and members
+There may be a confusion between members and messages because of some shared
+terms. Let us define them properly.
+.TP
+.I Messages
+A message is a data chunk transmitted over D-Bus. There is 4 types of
+messages. Using the terms from D-Bus specification:
+.RS 8
+.IP \(bu 2
+.I error
+.IP \(bu 2
+.I method_call
+.IP \(bu 2
+.I method_return
+.IP \(bu 2
+.I signal
+.RE
+.
+.TP
+.I Members
+A member is a piece of code in an application. Application have members,
+independently of D-Bus. From the point of view of D-Bus, there is only 2
+different type of members:
+.RS 8
+.IP \(bu 2
+.I method
+.IP \(bu 2
+.I signal
+.RE
+.
+.P
+The confusion arises when we speak of
+.I method
+and
+.I signal
+because both can designate a D-Bus message as well as a member of an
+application.
+.
+.RE
+.P
+In D-Bus jargon, we also speak of
+.I member name
+which is the name of the method or the signal as it figures in the code of the concerned application.
+.
+.
+.SS Interfaces
+Interfaces are used to group members according to a 'contract'. Interfaces
+have the same role than in some programming languages. If an application or an
+object 'implements an interface', it means that it has all the members specified
+by the interface should be implemented. Thus the application has an expected
+behaviour which can be exploited.
+.P
+D-Bus provides a good interface example:
+.P
+.ce 1
+org.freedesktop.DBus.Introspectable
+.ce 0
+.P
+This interface has one method 'Introspect' which returns a string. This result
+is in fact an XML string containing an exhaustive description of all public
+members.  If your application implements this interface, it should have the
+corresponding method.
+.
+.SS Hierarchy
+Here follows an overview of D-Bus hierarchy:
+.P
+.ce 1
+address \(-> bus name \(-> object \(-> interface \(-> member
+.ce 0
+.P
+Most of the time, we work on the session bus, so the address can be
+omitted. Otherwise you should specify it to prevent confusion.
+.
+.P
+The object is optionnal. In fact, objects may not be used in an application at
+all (e.g. in non object-oriented programming language).
+.P
+The interface is also optionnal. You should use it if the member belongs to a
+specific interface.
+.P
+For both object and interface, they should be specified when available to
+prevent name collision, since an application can have several members sharing
+the same name, but belonging to different interfaces or objects.
+They are optional if there is no ambiguity for the considered application.
+.
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+.SH EXAMPLE
+Filters are as found in D-Bus specification.
+.TP
+.EX
+.B \*[cmdname] \fB"type='method_call',interface='introspection'"
+.EE
+Report only messages that are method calls to interface introspection.
+.
+.SH AUTHORS
+Copyright \(co 2012 Pierre Neidhardt
+.
+.SH SEE ALSO
+dbus-monitor(1)
