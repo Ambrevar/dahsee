@@ -26,16 +26,81 @@
  * SOFTWARE.
  ******************************************************************************/
 
+#include <signal.h>
+#include <stdbool.h>
 #include "ui_web.h"
 
 #define PAGE_INDEX "dahsee.html"
-#define PAGE_STATS "dahsee-stats.html"
+#define PAGE_MESSAGES "dahsee-messages.html"
+#define PAGE_MESSAGES_END "dahsee-messages-end.html"
+#define PAGE_STATISTICS "dahsee-statistics.html"
 #define PAGE_STATUS "dahsee-status.html"
-#define PAGE_ERROR "<html><body>Page not found!</body></html>"
+#define PAGE_END "\n</body>\n</html>\n"
+#define PAGE_ERROR "Page not found!"
+#define PAGE_ERROR_FULL "<html><body>Page not found!</body></html>"
 
+// TODO: implement this.
 // Define where to find the pages.
 // Use env XDG_DATA_DIRS
 #define WEB_ROOT "../data/"
+
+
+// Points to index content. Set NULL by default, so that we can check if it has
+// been already loaded, thus preventing multiple reloads.
+static char* page_index = NULL;
+static long page_index_len;
+
+// TODO: dirty code!!!
+#define DATA_ERROR "<td>Data error.</td>"
+extern char* html_message;
+
+// Engine prototypes we need here.
+/* #include "json.h" */
+/* #define LIVE_OUTPUT_OFF 0 */
+/* #define LIVE_OUTPUT_ON 1 */
+/* void spy (char *filter, int opt); */
+/* char* html_message(JsonNode* message); */
+
+
+
+static char* 
+load_page(const char* url)
+{
+    // Append specified url to web page location.
+    char* file_path;
+    size_t len = strlen(WEB_ROOT) + strlen (url) + 1;
+    file_path = malloc (len);
+    snprintf(file_path, len , "%s%s", WEB_ROOT, url);
+
+    FILE *fp;
+    fp = fopen (file_path, "r");
+
+    if (fp == NULL)
+    {
+        // Web page could not be found.
+        perror (file_path);
+        free(file_path);
+        return NULL;
+    }
+    free(file_path);
+
+
+    size_t page_len;
+    char *page;
+
+    // Page length.
+    fseek (fp, 0, SEEK_END);
+    page_len = ftell (fp) + 1;
+    fseek (fp, 0, SEEK_SET);
+
+    page = malloc( page_len * sizeof(char));
+
+    fread (page, sizeof (char), page_len, fp);
+
+    fclose(fp);
+
+    return page;
+}
 
 /**
  * Server callback.
@@ -53,54 +118,96 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 {
     // TODO: add to logfile.
     fprintf (stderr, "URL=[%s]\n", url);
-    fprintf (stderr, "METHOD=[%s]\n", method);
-    fprintf (stderr, "VERSION=[%s]\n", version);
-    fprintf (stderr, "DATA=[%s]\n", upload_data);
-    fprintf (stderr, "DATA SIZE=[%lu]\n", *upload_data_size);
 
+    bool is_not_index_only = false;
+
+    // If no URL specified.
     if (0 == strcmp (url, "/"))
-        // No url specified.
         url = PAGE_INDEX;
 
-    // Append specified url to web page location.
-    char* file_path;
-    size_t len = strlen(WEB_ROOT) + strlen (url) + 1;
-    file_path = malloc (len);
-    snprintf(file_path, len , "%s%s", WEB_ROOT, url);
+    // If page_index is requested, we do not load the file another time.
+    if (strcmp(url, PAGE_INDEX) != 0)
+        is_not_index_only = true;
 
-    FILE *fp;
-    fp = fopen (file_path, "r");
+    /* if (0 == strcmp (url, PAGE_INDEX)) */
+    /*     spy(NULL); */
 
-    size_t read_amount;
-    char *page;
-
-    printf ("%s\n", file_path);
-
-    if (fp == NULL)
+    // Load page_index one time only.
+    if (page_index == NULL)
     {
-        // Web page could not be found.
-        perror (file_path);
-        page = PAGE_ERROR;
-        read_amount = strlen (page);
+        page_index=load_page(PAGE_INDEX);
+        page_index_len = strlen(page_index);
+    }
+
+    char* page ;
+    size_t page_len ;
+
+    // Messages page.
+    if (strstr(url, PAGE_MESSAGES) != NULL)
+    {
+        char* subpage;
+        subpage = load_page(PAGE_MESSAGES);
+        if (subpage == NULL)
+            subpage = PAGE_ERROR;
+
+        char* subpage_end;
+        subpage_end = load_page(PAGE_MESSAGES_END);
+        if (subpage_end == NULL)
+            subpage_end = PAGE_ERROR;
+
+        char* content = html_message;
+        if (content == NULL)
+            content = DATA_ERROR;
+
+        page_len = page_index_len
+            + strlen(subpage)
+            + strlen(content)
+            + strlen(subpage_end)
+            + strlen(PAGE_END)
+            + 1;
+        
+        page = malloc ( page_len * sizeof(char));
+    
+        strcpy(page, page_index);
+        strcat(page, subpage);
+        strcat(page, content);
+        strcat(page, subpage_end);
+        strcat(page, PAGE_END);
+    }
+    // Other pages
+    else if (strstr(url, "html") != NULL)
+    {
+        char* subpage;
+        if (is_not_index_only)
+        {
+            subpage = load_page(url);
+            if (subpage == NULL)
+                subpage = PAGE_ERROR;
+            page_len = page_index_len + strlen(subpage) + strlen(PAGE_END) +1;
+        }
+        else
+            page_len = page_index_len + strlen(PAGE_END) +1;
+
+        page = malloc ( page_len * sizeof(char));
+    
+        strcpy(page, page_index);
+        if (is_not_index_only)
+            strcat(page, subpage);
+        strcat(page, PAGE_END);
     }
     else
     {
-        fseek (fp, 0, SEEK_END);
-        long fp_len = ftell (fp);
-        fseek (fp, 0, SEEK_SET);
-
-        page = malloc (fp_len * sizeof (char));
-
-        read_amount = fread (page, sizeof (char), fp_len, fp);
-
-        fclose (fp);
+        page = load_page( url);
+        if (page == NULL)
+            page = PAGE_ERROR;
+        page_len = strlen(page);
     }
 
     struct MHD_Response *response;
     int ret;
 
     response =
-        MHD_create_response_from_buffer (read_amount, (void *) page,
+        MHD_create_response_from_buffer (page_len, (void *) page,
                                          MHD_RESPMEM_PERSISTENT);
     ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
     MHD_destroy_response (response);
@@ -116,6 +223,17 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
 }
 #pragma GCC diagnostic pop
 
+// TODO: Need to set mutex, or simple test.
+/* static void */
+/* daemon_spy () */
+/* { */
+/*     fprintf (stderr, "%s\n", "BEGIN"); */
+/*     spy(NULL, LIVE_OUTPUT_OFF); */
+/*     extern JsonNode * message_array; */
+/*     printf("%s\n", html_message(message_array)); */
+/*     fprintf (stderr, "%s\n", "END"); */
+/* } */
+
 void
 run_server ()
 {
@@ -126,11 +244,27 @@ run_server ()
     if (NULL == daemon)
         return;
 
+    // Catch SIGUSR1
+    /* struct sigaction act; */
+    /* act.sa_handler = daemon_spy; */
+    /* act.sa_flags = 0; */
+
+    /* if ((sigemptyset (&act.sa_mask) == -1) || */
+    /*     (sigaction (SIGUSR1, &act, NULL) == -1)) */
+    /* { */
+    /*     perror ("Failed to set SIGUSR1 handler"); */
+    /*     return; */
+    /* } */
+
     // TODO: handle signal and eavesdrop on DBus.
     for (;;)
     {
         sleep (60);
     }
+
+
+    if (page_index != NULL)
+        free(page_index);
 
     MHD_stop_daemon (daemon);
 

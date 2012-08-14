@@ -105,7 +105,10 @@ static const char *input_path = NULL;
 static const char *logfile_path = NULL;
 
 // Contains the whole bunch of messages caught using spy();
-static JsonNode *message_array ;
+JsonNode *message_array ;
+
+// Contains HTML info.
+char *html_message ;
 
 // Output options.
 enum OutputFormat
@@ -931,20 +934,20 @@ message_mangler (DBusMessage * message)
 
     // ARGUMENTS
     DBusMessageIter args;
-    if (!dbus_message_iter_init (message, &args))
+    if (dbus_message_iter_init (message, &args))
     {
-        fprintf (logfile, "ERROR: Message has no arguments.\n");
-        return NULL;
-    }
+        /* fprintf (logfile, "ERROR: Message has no arguments.\n"); */
+        /* return NULL; */
 
-    JsonNode* args_array = json_mkarray();
-    do
-    {
-        json_append_element(args_array, args_mangler (&args));
-    }
-    while (dbus_message_iter_next (&args));
+        JsonNode* args_array = json_mkarray();
+        do
+        {
+            json_append_element(args_array, args_mangler (&args));
+        }
+        while (dbus_message_iter_next (&args));
 
-    json_append_member (message_node, DBUS_JSON_ARGS, args_array);
+        json_append_member (message_node, DBUS_JSON_ARGS, args_array);
+    }
 
     return message_node;
 }
@@ -1120,15 +1123,247 @@ query_bus (enum Queries query, const char *parameter)
 }
 
 
+
+// D-Bus Messages only.
+// WARNING: manual free.
+// TODO: add 'error_name' field.
+
+/**
+   <tr>
+   <td>1344361353.210869</td>
+   <td>17:42:33</td>
+   <td>method_call</td>
+   <td>:1.68</td>
+   <td>org.freedesktop.DBus</td>
+   <td>2</td>
+   <td>-</td>
+   <td>/org/freedesktop/DBus</td>
+   <td>org.freedesktop.DBus</td>
+   <td>Addmatch</td>
+   <td>String:eavesdrop=true</td>
+   </tr>
+ */
+#define MEM_CHUNK 32768
+#define HTML_EMPTY_FIELD "-"
+char* message_to_html(JsonNode* message)
+{
+    char* result = NULL;
+    size_t result_size = 0 ;
+    size_t result_size_real = 0;
+
+    JsonNode* node = message;
+
+    char* html_row_begin = "\n<tr>";
+    size_t html_row_begin_len = strlen(html_row_begin);
+    char* html_row_end = "</tr>\n";
+    size_t html_row_end_len = strlen(html_row_end);
+    char* html_column_begin = "<td>";
+    size_t html_column_begin_len = strlen(html_column_begin);
+    char* html_column_end = "</td>\n";
+    size_t html_column_end_len = strlen(html_column_end);
+
+    while (node != NULL && node->tag == JSON_ARRAY)
+        node = json_first_child(node);
+        
+    while (node != NULL)
+    {
+        // TEST:
+        /* printf ("\n### MESSAGE TO HTML LOOP\n"); */
+
+        // Get machine time.
+        char* sec = json_stringify(json_find_member(node, DBUS_JSON_SEC), JSON_FORMAT_NONE);
+        char* usec = json_stringify(json_find_member(node, DBUS_JSON_USEC), JSON_FORMAT_NONE);
+
+        // The '+1' is for the separator.
+        char* mtime = malloc( ( strlen(sec) + strlen(usec) + 1 + 1 ) * sizeof(char));
+        strcpy(mtime, sec);
+        strcat(mtime, ".");
+        strcat(mtime, usec);
+
+        // Get Human time.
+        JsonNode* htime_node = json_find_member(node, DBUS_JSON_TIME_HUMAN);
+        /* char* hour = json_stringify(json_find_member(htime_node, DBUS_JSON_HOUR), JSON_FORMAT_NONE); */
+        /* char* minute = json_stringify(json_find_member(htime_node, DBUS_JSON_MINUTE), JSON_FORMAT_NONE); */
+        /* char* second = json_stringify(json_find_member(htime_node, DBUS_JSON_SECOND), JSON_FORMAT_NONE); */
+
+        // TODO: stupid code.
+        char hour[3];
+        long hour_val = (long) json_find_member(htime_node, DBUS_JSON_HOUR)->number_ ;
+        hour[0] = '0' + hour_val / 10;
+        hour[1] = '0' + hour_val % 10;
+        hour[2] = '\0';
+        char minute[3];
+        long minute_val = (long) json_find_member(htime_node, DBUS_JSON_MINUTE)->number_ ;
+        minute[0] = '0' + (minute_val / 10);
+        minute[1] = '0' + (minute_val % 10);
+        minute[2] = '\0';
+        char second[3];
+        long second_val = (long) json_find_member(htime_node, DBUS_JSON_SECOND)->number_;
+        second[0] = '0' + second_val / 10;
+        second[1] = '0' + second_val % 10;
+        second[2] = '\0';
+
+        // The '+2' is for the separator.
+        char* htime = malloc( ( strlen(hour) + strlen(minute) + strlen(second) + 2 + 1 ) * sizeof(char));
+        strcpy(htime, hour);
+        strcat(htime, ":");
+        strcat(htime, minute);
+        strcat(htime, ":");
+        strcat(htime, second);
+
+        // Note that strings returned from string_ should not be freed.
+
+        char* type = json_find_member(node, DBUS_JSON_TYPE)->string_;
+        char* sender = json_find_member(node, DBUS_JSON_SENDER)->string_;
+        char* destination = json_find_member(node, DBUS_JSON_DESTINATION)->string_;
+
+        // Strings returned from stringify should be freed.
+        JsonNode* temp;
+        
+        char* serial = NULL; 
+        temp = json_find_member(node, DBUS_JSON_SERIAL);
+        if (temp != NULL)
+            serial = json_stringify(temp, JSON_FORMAT_NONE);
+        else 
+            serial = HTML_EMPTY_FIELD;
+
+        char* reply_serial = NULL;
+        temp = json_find_member(node, DBUS_JSON_REPLY_SERIAL);
+        if (temp != NULL)
+            reply_serial = json_stringify(temp, JSON_FORMAT_NONE);
+        else 
+            reply_serial = HTML_EMPTY_FIELD;
+
+        char* path = NULL;
+        temp = json_find_member(node, DBUS_JSON_PATH);
+        if (temp != NULL)
+            path = temp->string_;
+        else 
+            path = HTML_EMPTY_FIELD;
+
+        char* interface = NULL;
+        temp = json_find_member(node, DBUS_JSON_INTERFACE);
+        if (temp != NULL)
+            interface = temp->string_;
+        else 
+            interface = HTML_EMPTY_FIELD;
+
+        char* member = NULL;
+        temp = json_find_member(node, DBUS_JSON_MEMBER);
+        if (temp != NULL)
+            member = temp->string_;
+        else 
+            member = HTML_EMPTY_FIELD;
+
+        /* char* reply_serial = json_stringify(json_find_member(node, DBUS_JSON_REPLY_SERIAL), JSON_FORMAT_NONE); */
+
+
+        /* char* path = json_find_member(node, DBUS_JSON_PATH)->string_; */
+        /* char* interface = json_find_member(node, DBUS_JSON_INTERFACE)->string_; */
+        /* char* member = json_find_member(node, DBUS_JSON_MEMBER)->string_; */
+
+        // TODO: args.
+
+        // Note: do not forget +1 for the null terminating byte.
+        result_size += html_row_begin_len + html_row_end_len + 1;
+
+        // TODO: cumbersome checks. Are they needed ?
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(mtime);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(htime);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(type);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(sender);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(destination);
+
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(serial);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(reply_serial);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(path);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(interface);
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(member);
+
+        // TODO: why does the following not work ?
+        /* result = realloc( result, result_size * sizeof(char)); */
+        if (result_size_real <= result_size)
+        {
+            result_size_real += MEM_CHUNK;
+            result = realloc( result, result_size_real * sizeof(char));
+        }
+
+        if (result == NULL)
+            perror("HTML message memory error");
+
+        strcat( result, html_row_begin);
+
+        strcat( result, html_column_begin);
+        strcat( result, mtime);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, htime);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, type);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, sender);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, destination);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, serial);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, reply_serial);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, path);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, interface);
+        strcat( result, html_column_end);
+
+        strcat( result, html_column_begin);
+        strcat( result, member);
+        strcat( result, html_column_end);
+
+        strcat( result, html_row_end);
+
+        // TEST:
+        /* fprintf (stderr, "%s\n", result); */
+
+        // TODO: Clean properly.
+        free(mtime);
+        free(sec);
+        free(usec);
+
+        free(htime);
+
+        node=node->next;
+    }
+    
+    return result;
+}
+
+
+
 /**
  * Eavesdrop messages and store them internally. Parameter is a user-defined
  * filter.
  */
 
 #define EAVES "eavesdrop=true"
+#define LIVE_OUTPUT_OFF 0
+#define LIVE_OUTPUT_ON 1
 
 void
-spy (char *filter)
+spy (char *filter, int opt)
 {
     DBusConnection *connection;
     DBusError error;
@@ -1179,13 +1414,21 @@ spy (char *filter)
     fprintf (logfile,"NOTE: Filter in use is %s\n", eavesfilter);
     
     // World available array containing all messages.
+    if (message_array != NULL)
+    {
+        json_delete(message_array);
+    }
     message_array = json_mkarray();
 
+    // TEST:
+    /* int i; */
+    /* for (i = 0; i<3; i++) */
     while (doneflag==0)
     {
         // Next available message. The use of the "dispatch" version handles the
         // queue for us. The timeout (in ms) is meant to find a balance between
         // signal response and CPU load).
+        /* dbus_connection_read_write_dispatch (connection, -1); */
         dbus_connection_read_write_dispatch (connection, 1000);
         message = dbus_connection_pop_message (connection);
 
@@ -1193,54 +1436,57 @@ spy (char *filter)
         {
             JsonNode *message_node = message_mangler (message);
             json_append_element(message_array, message_node);
-            json_print (message_node);
+
+            if (opt == LIVE_OUTPUT_ON)
+                json_print (message_node);
+
             dbus_message_unref (message);
         }
     }
+    doneflag=0;
+
+    if (opt == LIVE_OUTPUT_OFF)
+        html_message = message_to_html(message_array);
 
     dbus_connection_unref (connection);
 }
 
-// D-Bus Message only.
-// WARNING: manual free.
-char* html_message(JsonNode* message)
+
+
+static void
+daemon_handler(int sig)
 {
-    char* result;
-
-    char* sec = json_stringify(json_find_member(message, DBUS_JSON_SEC), JSON_FORMAT_NONE);
-    char* usec = json_stringify(json_find_member(message, DBUS_JSON_USEC), JSON_FORMAT_NONE);
-    char* type = json_stringify(json_find_member(message, DBUS_JSON_TYPE), JSON_FORMAT_NONE);
-    char* sender = json_stringify(json_find_member(message, DBUS_JSON_SENDER), JSON_FORMAT_NONE);
-    char* destination = json_stringify(json_find_member(message, DBUS_JSON_DESTINATION), JSON_FORMAT_NONE);
-
-    // sepsize is the space between the fields, and the last '+1' is for \0.
-    size_t sepsize = 1;
-    size_t result_size = strlen(sec)+sepsize
-        + strlen(usec)+sepsize
-        + strlen(type)+sepsize
-        + strlen(sender)+sepsize
-        + strlen(destination)+1;
-
-    result = malloc(result_size * sizeof(char));
-    snprintf( result, result_size, "%s %s %s %s %s", sec,usec,type,sender,destination);
-    
-    return result;
+    spy(NULL, LIVE_OUTPUT_OFF);
 }
 
-#if DAHSEE_UI_WEB != 0
+/* #if DAHSEE_UI_WEB != 0 */
 static void
 run_daemon ()
 {
-    // TODO: handle signal and eavesdrop on DBus.
-    /* for (;;) */
-    /* { */
-    /*     sleep (60); */
-    /* } */
+    // Catch SIGUSR1.
+    struct sigaction act;
+    act.sa_handler = daemon_handler;
+    act.sa_flags = 0;
 
+    if ((sigemptyset (&act.sa_mask) == -1) ||
+        (sigaction (SIGUSR1, &act, NULL) == -1))
+    {
+        perror ("Failed to set SIGUSR1 handler");
+        return;
+    }
+
+#if DAHSEE_UI_WEB != 0
     run_server();
+#else
+    for (;;)
+    {
+        sleep (60);
+    }
+#endif
+
     return;
 }
-#endif
+/* #endif */
 
 static void 
 prepare_file (const char* path, FILE** file, const char* mode)
@@ -1277,9 +1523,9 @@ print_help (const char *executable)
     puts ("A D-Bus monitoring tool.\n");
 
     puts ("  -a        List activatable bus names.");
-#ifdef DAHSEE_UI_WEB
+/* #ifdef DAHSEE_UI_WEB */
     puts ("  -d        Daemonize.");
-#endif
+/* #endif */
     puts ("  -f        Force overwriting when output file exists.");
     puts ("  -h        Print this help.");
     puts ("  -I NAME   Return introspection of NAME.");
@@ -1355,14 +1601,14 @@ main (int argc, char **argv)
         return 1;
     }
 
-#if DAHSEE_UI_WEB !=0
+/* #if DAHSEE_UI_WEB !=0 */
     // Fork variables.
     pid_t pid, sid;
     bool daemonize = false;
     while ((c = getopt (argc, argv, ":adfhH:i:I:L:ln:o:p:vu:")) != -1)
-#else
-    while ((c = getopt (argc, argv, ":afhH:i:I:L:ln:o:p:vu:")) != -1)
-#endif
+/* #else */
+/*     while ((c = getopt (argc, argv, ":afhH:i:I:L:ln:o:p:vu:")) != -1) */
+/* #endif */
     {
         switch (c)
         {
@@ -1371,12 +1617,12 @@ main (int argc, char **argv)
             query = QUERY_ACTIVATABLE_NAMES;
             break;
 
-#if DAHSEE_UI_WEB != 0
+/* #if DAHSEE_UI_WEB != 0 */
         case 'd':
             exclusive_opt++;
             daemonize = true;
             break;
-#endif
+/* #endif */
 
         case 'f':
             option_force_overwrite = true;
@@ -1522,7 +1768,8 @@ main (int argc, char **argv)
             break;
         }
     }
-#if DAHSEE_UI_WEB != 0
+
+/* #if DAHSEE_UI_WEB != 0 */
     // Daemon
     else if (daemonize == true)
     {
@@ -1557,7 +1804,7 @@ main (int argc, char **argv)
         // TODO: need to log somewhere, otherwise will go to terminal.
         run_daemon ();
     }
-#endif
+/* #endif */
     else
     {
         // Eavesdrop bus messages. Default bhaviour.
@@ -1571,13 +1818,20 @@ main (int argc, char **argv)
         else
             filter = argv[optind];
 
-        spy(filter);
+        spy(filter, LIVE_OUTPUT_ON);
+
+        // TEST: 
+        if (html_message != NULL)
+            fprintf (stderr, "%s\n", html_message);
     }
 
 
     // Clean global stuff.
     if (message_array != NULL)
         json_delete (message_array);
+
+    if (html_message != NULL)
+        free (html_message);
 
     if (output != NULL && output != stdout)
         fclose(output);

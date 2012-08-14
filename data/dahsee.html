@@ -3,19 +3,13 @@
   <head>
     <title>Dahsee WebUI</title>
 
-    <!-- TODO: What is the best way to set encoding? -->
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
     <link href="dahsee.css" rel="stylesheet" type="text/css"> 
-
-    <script type="text/javascript" src="dahsee.js"></script>
-    <script type="text/javascript" src="sortable.js"></script>
     <script type="text/javascript" src="table.js"></script>
 
   </head>
 
-
-  <!-- TODO: is this really useful? -->
   <noscript>
     Your browser either does not support JavaScript, or has JavaScript turned
     off.
@@ -31,99 +25,8 @@
          the generated data ? (see below). The idea is to send the static part only
          once.  -->
      <div id="menu">
-      <a href="dahsee.html" class="menu">Messages</a>
-      <a href="dahsee-stats.html" class="menu">Statistics</a>
+      <a href="dahsee-messages.html" class="menu">Messages</a>
+      <a href="dahsee-statistics.html" class="menu">Statistics</a>
       <a href="dahsee-status.html" class="menu">Status</a>
     </div>
     </div>
-
-    <!-- TODO: is it possible to add a column with row number w/o using javascript? -->
-
-    <div id="table-control">
-	  <span class="tablecontrol-match" id="t1filtercount"></span>&nbsp;of <span id="t1allcount"></span>&nbsp;rows match filter(s)
-	  <span class="tablecontrol-page">Page <span id="t1page"></span>&nbsp;of <span id="t1pages"></span></span>
-    </div>
-
-    <table id="t1" class="example table-autosort table-autofilter table-autopage:3 table-stripeclass:alternate table-page-number:t1page table-page-count:t1pages table-filtered-rowcount:t1filtercount table-rowcount:t1allcount">
-      <thead>
-
-        <!-- Page browsing -->
-        <!-- TODO: fix colspan for a correct value -->
-	    <tr>
-		  <td id="tablecontrol-previous"  class="table-page:previous" style="cursor:pointer;">←</td>
-		  <!-- <td colspan="1" style="text-align:center;">Page <span id="t1page"></span>&nbsp;of <span id="t1pages"></span></td> -->
-      	  <td colspan="11" align="right" id="tablecontrol-next" class="table-page:next" style="cursor:pointer;">→</td>
-	    </tr>
-      <!-- <tfoot> -->
-      <!-- <tr> -->
-      <!-- 	<td id="tablecontrol-next" class="table-page:next" style="cursor:pointer;">→</td> -->
-      <!-- </tr> -->
-      <!-- </tfoot> -->
-
-        <!-- Result count -->
-	    <!-- <tr> -->
-		<!--   <td colspan="2" id="filtercount"><span id="t1filtercount"></span>&nbsp;of <span id="t1allcount"></span>&nbsp;rows match filter(s) </td> -->
-        <!-- </tr> -->
-
-
-        <!-- Table head -->
-	    <tr>
-
-          <!-- EXAMPLE -->
-		  <!-- <th>Numeric<br><select onchange="Table.filter(this,this)"> -->
-          <!--     <option value="function(){return true;}">All</option> -->
-          <!--     <option value="function(val){return parseFloat(val.replace(/\$/,''))>500;}">&gt; 500</option> -->
-          <!--     <option value="function(val){return parseFloat(val.replace(/\$/,''))<=500;}">&lt;= 500</option> -->
-          <!-- </th> -->
-		  <!-- <th class="table-sortable:numeric">Numeric</th> -->
-		  <!-- <th class="table-filterable table-sortable:default">Text</th> -->
-
-		  <th class="table-sortable:numeric">Machine Time<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-		  <th>Time<br><input name="filter" size="6" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-filterable table-sortable:default">Type</th>
-		  <th class="table-sortable:default">Sender<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:default">Destination<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:numeric">S<br><input name="filter" size="3" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:numeric">RS<br><input name="filter" size="3" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:default">Path<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:default">Interface<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:default">Member<br><input name="filter" size="8" onkeyup="Table.filter(this,this)"></th>
-		  <th class="table-sortable:default">Args<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
-
-	    </tr>
-      </thead>
-      <tbody>
-
-        <!-- Next follows the generated content. Note that whatever happens to the page -->
-        <!--     formatting, the generated content should reamin AS SIMPLE AS POSSIBLE. -->
-
-        <!---------------------------------->
-        <!-- BEGIN OF AUTO-GENERATED DATA -->
-        <!---------------------------------->
-        <tr>
-          <td>1344361353.210869</td>
-          <td>17:42:33</td>
-          <td>method_call</td>
-          <td>:1.68</td>
-          <td>org.freedesktop.DBus</td>
-          <td>2</td>
-          <td>-</td>
-          <td>/org/freedesktop/DBus</td>
-          <td>org.freedesktop.DBus</td>
-          <td>Addmatch</td>
-          <td>String:eavesdrop=true</td>
-        </tr>
-
-        <!-- Simple but less readable formatting possibility -->
-        <tr><td>1344361354.210829</td><td>17:42:34</td><td>method_return</td><td>org.freedesktop.DBus</td><td>:1.68</td><td>-</td><td>2</td><td>/org/freedesktop/Custom</td><td>org.freedesktop.Custom</td><td>-</td><td>String:Acknowledged, Uint64:17</td></tr>
-        <tr><td>1423412323.123431</td><td>04:28:12</td><td>signal</td><td>org.naquadah.awesome.awful</td><td>:1.39</td><td>17</td><td>-</td><td>/org/naquadah/awesome</td><td>org.naquadah.awesome</td><td>Hello</td><td>String:iamtheone</td></tr>
-
-        <!---------------------------------->
-        <!-- END OF AUTO-GENERATED DATA -->
-        <!---------------------------------->
-
-      </tbody>
-    </table>
-
-  </body>
-</html>

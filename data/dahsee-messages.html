@@ -1,0 +1,63 @@
+    <!-- TODO: is it possible to add a column with row number w/o using javascript? -->
+
+    <div id="table-control">
+	  <span class="tablecontrol-match" id="t1filtercount"></span>&nbsp;of <span id="t1allcount"></span>&nbsp;rows match filter(s)
+	  <span class="tablecontrol-page">Page <span id="t1page"></span>&nbsp;of <span id="t1pages"></span></span>
+    </div>
+
+    <table id="t1" class="example table-autosort table-autofilter table-autopage:30 table-stripeclass:alternate table-page-number:t1page table-page-count:t1pages table-filtered-rowcount:t1filtercount table-rowcount:t1allcount">
+      <thead>
+
+        <!-- Page browsing -->
+        <!-- TODO: fix colspan for a correct value -->
+	    <tr>
+		  <td id="tablecontrol-previous"  class="table-page:previous" style="cursor:pointer;">←</td>
+		  <!-- <td colspan="1" style="text-align:center;">Page <span id="t1page"></span>&nbsp;of <span id="t1pages"></span></td> -->
+      	  <td colspan="11" align="right" id="tablecontrol-next" class="table-page:next" style="cursor:pointer;">→</td>
+	    </tr>
+      <!-- <tfoot> -->
+      <!-- <tr> -->
+      <!-- 	<td id="tablecontrol-next" class="table-page:next" style="cursor:pointer;">→</td> -->
+      <!-- </tr> -->
+      <!-- </tfoot> -->
+
+        <!-- Result count -->
+	    <!-- <tr> -->
+		<!--   <td colspan="2" id="filtercount"><span id="t1filtercount"></span>&nbsp;of <span id="t1allcount"></span>&nbsp;rows match filter(s) </td> -->
+        <!-- </tr> -->
+
+
+        <!-- Table head -->
+	    <tr>
+
+          <!-- EXAMPLE -->
+		  <!-- <th>Numeric<br><select onchange="Table.filter(this,this)"> -->
+          <!--     <option value="function(){return true;}">All</option> -->
+          <!--     <option value="function(val){return parseFloat(val.replace(/\$/,''))>500;}">&gt; 500</option> -->
+          <!--     <option value="function(val){return parseFloat(val.replace(/\$/,''))<=500;}">&lt;= 500</option> -->
+          <!-- </th> -->
+		  <!-- <th class="table-sortable:numeric">Numeric</th> -->
+		  <!-- <th class="table-filterable table-sortable:default">Text</th> -->
+
+		  <th class="table-sortable:numeric">Machine Time<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+		  <th>Time<br><input name="filter" size="6" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-filterable table-sortable:default">Type</th>
+		  <th class="table-sortable:default">Sender<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:default">Destination<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:numeric">S<br><input name="filter" size="3" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:numeric">RS<br><input name="filter" size="3" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:default">Path<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:default">Interface<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:default">Member<br><input name="filter" size="8" onkeyup="Table.filter(this,this)"></th>
+		  <th class="table-sortable:default">Args<br><input name="filter" size="16" onkeyup="Table.filter(this,this)"></th>
+
+	    </tr>
+      </thead>
+      <tbody>
+
+        <!-- Next follows the generated content. Note that whatever happens to the page -->
+        <!--     formatting, the generated content should reamin AS SIMPLE AS POSSIBLE. -->
+
+        <!---------------------------------->
+        <!-- BEGIN OF AUTO-GENERATED DATA -->
+        <!---------------------------------->
