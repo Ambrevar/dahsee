@@ -14,6 +14,7 @@ CFLAGS_ALL += -DAPPNAME=\"${APPNAME}\"
 CFLAGS_ALL += -DVERSION=\"${VERSION}\"
 CFLAGS_ALL += -DAUTHOR=\"${AUTHOR}\"
 CFLAGS_ALL += -DYEAR=\"${YEAR}\"
+CFLAGS_ALL += -DMANPAGE=\"${MANPAGE}\(${MANSECTION}\)\"
 
 ## TODO: must make json.c following C99 instead of C11?
 # CFLAGS_ALL += -Wall -Wextra -Wshadow -Winline

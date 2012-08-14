@@ -1518,17 +1518,16 @@ prepare_file (const char* path, FILE** file, const char* mode)
 static void
 print_help (const char *executable)
 {
+    puts ("A D-Bus monitoring tool.\n");
     printf ("Usage: %s [FILTER]\n", executable);
     printf ("   or: %s OPTION [ARG]\n\n", executable);
-    puts ("A D-Bus monitoring tool.\n");
 
     puts ("  -a        List activatable bus names.");
-/* #ifdef DAHSEE_UI_WEB */
     puts ("  -d        Daemonize.");
-/* #endif */
     puts ("  -f        Force overwriting when output file exists.");
     puts ("  -h        Print this help.");
     puts ("  -I NAME   Return introspection of NAME.");
+    puts ("  -L FILE   Write log to FILE (default is stderr).");
     puts ("  -l        List registered bus names.");
     puts ("  -n NAME   Return unique name associated to NAME.");
     puts ("  -o FILE   Write output to FILE (default is stdout).");
@@ -1536,17 +1535,15 @@ print_help (const char *executable)
     puts ("  -u NAME   Return UID who owns NAME.");
     puts ("  -v        Print version.");
 
-    /* puts (""); */
-    /* puts ("Dahsee provides two main features:"); */
-    /* puts (" Queries to D-Bus session which let you get various details about applications, registered names, etc."); */
-    /* puts (""); */
-    /* puts (" Dahsee can list and filter all the messages travelling through D-Bus. This is the default behavior."); */
+    /* puts ("  -X        Set output format to XML."); */
+    /* puts ("  -H        Set output format to HTML."); */
+    /* puts ("  -i FILE   Read input FILE."); */
 
     puts ("");
     puts ("With no argument, it will catch D-Bus messages matching FILTER. The syntax follows D-Bus specification. If FILTER is empty, all messages are caught.");
 
     puts("");
-    puts("See the DAHSEE(1) man page for more information.");
+    printf("See the %s man page for more information.\n", MANPAGE);
 }
 
 static void
@@ -1605,7 +1602,7 @@ main (int argc, char **argv)
     // Fork variables.
     pid_t pid, sid;
     bool daemonize = false;
-    while ((c = getopt (argc, argv, ":adfhH:i:I:L:ln:o:p:vu:")) != -1)
+    while ((c = getopt (argc, argv, ":adfhi:I:L:ln:o:p:vu:")) != -1)
 /* #else */
 /*     while ((c = getopt (argc, argv, ":afhH:i:I:L:ln:o:p:vu:")) != -1) */
 /* #endif */
@@ -1627,16 +1624,11 @@ main (int argc, char **argv)
         case 'f':
             option_force_overwrite = true;
             break;
-        case 'H':
-            option_output_format = FORMAT_XML;
-            break;
+
         case 'h':
             print_help (argv[0]);
             return 0;
-        case 'i':
-            input_path = optarg;
-            prepare_file(input_path, &input, "r");
-            break;
+
         case 'I':
             exclusive_opt++;
             parameter = optarg;
@@ -1652,6 +1644,7 @@ main (int argc, char **argv)
             exclusive_opt++;
             query = QUERY_LIST_NAMES;
             break;
+
         case 'n':
             exclusive_opt++;
             parameter = optarg;
@@ -1668,14 +1661,30 @@ main (int argc, char **argv)
             parameter = optarg;
             query = QUERY_GET_CONNECTION_UNIX_PROCESS_ID;
             break;
-        case 'v':
-            print_version ();
-            return 0;
+
         case 'u':
             exclusive_opt++;
             parameter = optarg;
             query = QUERY_GET_CONNECTION_UNIX_USER;
             break;
+
+        case 'v':
+            print_version ();
+            return 0;
+
+        /* case 'X': */
+        /*     option_output_format = FORMAT_XML; */
+        /*     break; */
+
+        /* case 'H': */
+        /*     option_output_format = FORMAT_HTML; */
+        /*     break; */
+
+        /* case 'i': */
+        /*     input_path = optarg; */
+        /*     prepare_file(input_path, &input, "r"); */
+        /*     break; */
+
         case ':':
             fprintf (logfile, "ERROR: -%c needs an argument.\n==> Try '%s -h' for more information.\n", optopt, argv[0]);
             return 1;

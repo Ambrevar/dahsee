@@ -4,9 +4,13 @@
 .ds appname Dahsee
 .ds cmdname dahsee
 .ds manname DAHSEE
+.ds version 0.1
+.ds year 2012
+.ds date \*[year]-08-14
+.ds authors Pierre Neidhardt
 .
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-.TH \*[manname] 1 "August 2012" "\*[appname] 0.1" "User Commands"
+.TH \*[manname] 1 "\*[date]" "\*[appname] \*[version]" "User Commands"
 .
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH NAME
@@ -25,16 +29,15 @@
 .
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH DESCRIPTION
-\*[appname] let the user inspect almost all what is possible to check on
-D-Bus. You can introspect applications, list all registered names on bus, or
-track messages matching a specific filter. See below for mode details on D-Bus.
+\*[appname] performs in-depth analysis of D-Bus current status and messages.
+You can introspect applications, list all registered names on a bus, or track
+messages matching a specific filter. See below for mode details on D-Bus.
 .P
-The goal is to provide a human readable view over the D-Bus process. JSON is
-used for this purpose, even if it may sometimes need a higher memory footprint.
+The goal is to provide a human readable view over the D-Bus process.
+JSON is used internally as data structure as it is easy to read and to parse by
+other application. Thus is JSON the default output format. Plain text, HTML
 .P
-There is two ways to run \*[appname]. Either it retrieves a specific piece of
-information, or it spies for messages on the bus until it receives the signal
-interrupt (SIGINT).
+\*[appname] has two working modes depending on the arguments.
 .
 .SS Monitor mode
 This is the default behaviour, i.e. running \*[cmdname] without arguments.
@@ -49,67 +52,71 @@ form. See OPTIONS.
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH OPTIONS
 .TP
-\fB-a\fR
+.B -a
 List activatable bus names.
 .TP
-\fB-d\fR
+.B -d
 Daemonize. (Web interface only).
 .TP
-\fB-f\fR
+.B -f
 Force overwriting when output file exists.
 .TP
-\fB-h\fR
+.B -h
 Print this help.
 .TP
-\fB-i \fINAME
+.BI -I " NAME"
 Return introspection of NAME.
 .TP
-\fB-l\fR
+.BI -L " FILE"
+Write log to FILE (default is stderr).
+.TP
+.B -l
 List registered bus names.
 .TP
-\fB-n \fINAME
+.BI -n " NAME"
 Return unique name associated to NAME.
 .TP
-\fB-o \fIFILE
+.BI -o " FILE"
 Write output to FILE (default is stdout).
 .TP
-\fB-p\fR
+.BI -p " NAME"
 Return PID associated to NAME.
 .TP
-\fB-u \fINAME
+.BI -u " NAME"
 Return UID who owns NAME.
 .TP
-\fB-v\fR
+.B -v
 Print version.
 .
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH NOTES
-D-Bus specification may be sometimes confusing. So we will tak the liberty to
-clarify some points here. We assume that you already know the purpose and main
-mechanism of D-Bus.
+D-Bus specification may be sometimes confusing. So we will take time to clarify
+some points here. We assume that you already know the purpose and main mechanism
+of D-Bus.
 .
 .SS
 Addresses
-There is 4 different kinds of D-Bus instances:
+There is four different kinds of D-Bus instances:
 .TP
 .I System bus
-1 per machine.
-It is primarily targeted at hardware and security. It is not meant to be
-requested by user.
+One per machine.
+It is primarily targeted at hardware and security. It is not meant to interact
+with user.
 .TP
 .I Session bus
-1 per user session. All desktop applications run by user should connect to this
+One per user session. All desktop applications run by user should connect to this
 bus.
 .TP
 .I Custom bus
-It is also possible to initiate a custom bus. It may be needed in some cases,
+It is also possible to initiate a custom bus. It may be needed in some cases
 like running a bus in a sandbox environment. It is not recommended for common
-usage, since D-Bus primary goal is allowing application to communicate to each
+usage, since D-Bus primary goal is allowing applications to communicate to each
 other.
 .TP
 .I Direct connection
-2 applications may establish a connection between them. The communication is not
-seeable by anything else. This is also referred as 'peer-to-peer' connection.
+Two applications may establish a connection between them. Messages are confined
+to in-between. No third-party application may catch messages from this bus. This
+is also referred as a 'peer-to-peer' connection.
 .P
 When refering to a specific instance, we speak of an
 .I address
@@ -126,16 +133,15 @@ in the form of a reverse domain name, e.g. 'tld.example.app'.
 .P
 
 D-Bus
-.I objects are used to designate the very same objects used in application
-source code. There are used to group members. Note that they are not mandatory.
-An object is defined by a
+.I objects
+are used to designate the very same objects used in application source
+code. There are useful to group members together. They are not
+mandatory.  An object is defined by a
 .I path
-for example '/tld/example/app/myobject'. A path should begin with a '/'.
-Note that D-Bus jargon is not very clear about the term used to designate an
-object, so basicly in the context of D-Bus 'object', 'path', and 'object path'
-mean the same thing. Please note however that a D-Bus object may refer to an
-actual application object, so if they are closely related, they are not strictly
-the same thing on a technical poitn of view.
+for example '/tld/example/app/myobject'. A path should begin with a '/'.  In the
+context of D-Bus 'object', 'path', and 'object path' mean the same thing. If a
+D-Bus object may refer to an actual application object, they are not strictly
+the same thing on a technical point of view.
 .
 .SS Messages and members
 There may be a confusion between members and messages because of some shared
@@ -183,11 +189,10 @@ which is the name of the method or the signal as it figures in the code of the c
 .
 .
 .SS Interfaces
-Interfaces are used to group members according to a 'contract'. Interfaces
-have the same role than in some programming languages. If an application or an
+Interfaces are used to group members according to a 'contract'. Interfaces have
+the same role than in some programming languages. If an application or an
 object 'implements an interface', it means that it has all the members specified
-by the interface should be implemented. Thus the application has an expected
-behaviour which can be exploited.
+by the interface. Thus the application will follow an expected behaviour.
 .P
 D-Bus provides a good interface example:
 .P
@@ -201,7 +206,7 @@ members.  If your application implements this interface, it should have the
 corresponding method.
 .
 .SS Hierarchy
-Here follows an overview of D-Bus hierarchy:
+Here follows an overview of D-Bus hierarchy used to refer to a specific member:
 .P
 .ce 1
 address \(-> bus name \(-> object \(-> interface \(-> member
@@ -232,7 +237,7 @@ Filters are as found in D-Bus specification.
 Report only messages that are method calls to interface introspection.
 .
 .SH AUTHORS
-Copyright \(co 2012 Pierre Neidhardt
+Copyright \(co \*[year] \*[authors]
 .
 .SH SEE ALSO
 dbus-monitor(1)

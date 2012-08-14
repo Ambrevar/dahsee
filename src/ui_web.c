@@ -31,7 +31,9 @@
 #include "ui_web.h"
 
 #define PAGE_INDEX "dahsee.html"
-#define PAGE_MESSAGES "dahsee-messages.html"
+#define PAGE_MESSAGES "/dahsee-messages.html"
+#define PAGE_MESSAGES_START "/sig/start"
+#define PAGE_MESSAGES_STOP "/sig/stop"
 #define PAGE_MESSAGES_END "dahsee-messages-end.html"
 #define PAGE_STATISTICS "dahsee-statistics.html"
 #define PAGE_STATUS "dahsee-status.html"
@@ -142,8 +144,23 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
     char* page ;
     size_t page_len ;
 
+    // WARNING: do not load url on random assumptions!
     // Messages page.
-    if (strstr(url, PAGE_MESSAGES) != NULL)
+    // FIXME: How to return nothing?
+    if (strcmp(url, PAGE_MESSAGES_START) == 0)
+    {
+        kill(getpid(), SIGUSR1);
+        page = PAGE_ERROR;
+        page_len = strlen(page);
+    }
+    else if (strcmp(url, PAGE_MESSAGES_STOP) == 0)
+    {
+        kill(getpid(), SIGINT);
+        page = PAGE_ERROR;
+        page_len = strlen(page);
+    }
+    // Messages page.
+    else if (strcmp(url, PAGE_MESSAGES) == 0)
     {
         char* subpage;
         subpage = load_page(PAGE_MESSAGES);
@@ -175,6 +192,7 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
         strcat(page, PAGE_END);
     }
     // Other pages
+    // TODO: check for security risks (like "..").
     else if (strstr(url, "html") != NULL)
     {
         char* subpage;
