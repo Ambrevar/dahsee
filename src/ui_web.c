@@ -32,13 +32,12 @@
 
 #define PAGE_INDEX "dahsee.html"
 #define PAGE_MESSAGES "/dahsee-messages.html"
-#define PAGE_MESSAGES_START "/sig/start"
-#define PAGE_MESSAGES_STOP "/sig/stop"
+#define PAGE_MESSAGES_START "/rec"
 #define PAGE_MESSAGES_END "dahsee-messages-end.html"
 #define PAGE_STATISTICS "dahsee-statistics.html"
 #define PAGE_STATUS "dahsee-status.html"
 #define PAGE_END "\n</body>\n</html>\n"
-#define PAGE_ERROR "Page not found!"
+#define PAGE_ERROR "Page not found."
 #define PAGE_ERROR_FULL "<html><body>Page not found!</body></html>"
 
 // TODO: implement this.
@@ -52,18 +51,12 @@
 static char* page_index = NULL;
 static long page_index_len;
 
-// TODO: dirty code!!!
-#define DATA_ERROR "<td>Data error.</td>"
+// Message processing.
+#define DATA_ERROR "No data found."
+#define DATA_RECORDING "Collecting data..."
+#define DATA_REC_FINISHED "Data collected."
+static bool is_recording = true;
 extern char* html_message;
-
-// Engine prototypes we need here.
-/* #include "json.h" */
-/* #define LIVE_OUTPUT_OFF 0 */
-/* #define LIVE_OUTPUT_ON 1 */
-/* void spy (char *filter, int opt); */
-/* char* html_message(JsonNode* message); */
-
-
 
 static char* 
 load_page(const char* url)
@@ -149,32 +142,54 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
     // FIXME: How to return nothing?
     if (strcmp(url, PAGE_MESSAGES_START) == 0)
     {
+        char* subpage;
+
         kill(getpid(), SIGUSR1);
-        page = PAGE_ERROR;
-        page_len = strlen(page);
-    }
-    else if (strcmp(url, PAGE_MESSAGES_STOP) == 0)
-    {
-        kill(getpid(), SIGINT);
-        page = PAGE_ERROR;
-        page_len = strlen(page);
+
+        if (is_recording)
+            subpage = DATA_RECORDING;
+        else
+            subpage = DATA_REC_FINISHED;
+
+        // Toggle recording status.
+        is_recording = (is_recording + 1) % 2;
+
+        page_len = page_index_len
+            + strlen(subpage)
+            + strlen(PAGE_END)
+            + 1;
+        
+        page = malloc ( page_len * sizeof(char));
+        
+        strcpy(page, page_index);
+        strcat(page, subpage);
+        strcat(page, PAGE_END);
+
     }
     // Messages page.
     else if (strcmp(url, PAGE_MESSAGES) == 0)
     {
         char* subpage;
-        subpage = load_page(PAGE_MESSAGES);
-        if (subpage == NULL)
-            subpage = PAGE_ERROR;
-
         char* subpage_end;
-        subpage_end = load_page(PAGE_MESSAGES_END);
-        if (subpage_end == NULL)
-            subpage_end = PAGE_ERROR;
-
         char* content = html_message;
+
         if (content == NULL)
+        {
+            subpage="";
+            subpage_end="";
             content = DATA_ERROR;
+        }
+        else
+        {
+            subpage = load_page(PAGE_MESSAGES);
+            if (subpage == NULL)
+                subpage = PAGE_ERROR;
+
+            subpage_end = load_page(PAGE_MESSAGES_END);
+            if (subpage_end == NULL)
+                subpage_end = PAGE_ERROR;
+        }
+
 
         page_len = page_index_len
             + strlen(subpage)
@@ -184,12 +199,13 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
             + 1;
         
         page = malloc ( page_len * sizeof(char));
-    
+        
         strcpy(page, page_index);
         strcat(page, subpage);
         strcat(page, content);
         strcat(page, subpage_end);
         strcat(page, PAGE_END);
+        
     }
     // Other pages
     // TODO: check for security risks (like "..").

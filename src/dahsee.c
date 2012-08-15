@@ -93,6 +93,7 @@
 // function (e.g. spy()) run an inifite loop, this is the only way to let them
 // know when it is time to quit.
 static volatile sig_atomic_t doneflag = 0;
+static volatile sig_atomic_t spyflag = 0;
 
 // Paths and file descriptors for output and logfile.
 // TODO: handle input.
@@ -101,7 +102,7 @@ static FILE* output = NULL;
 static FILE* logfile = NULL;
 static FILE* input = NULL;
 static const char *output_path = NULL;
-static const char *input_path = NULL;
+/* static const char *input_path = NULL; */
 static const char *logfile_path = NULL;
 
 // Contains the whole bunch of messages caught using spy();
@@ -118,7 +119,7 @@ enum OutputFormat
     FORMAT_XML
 };
 // With this variable we can set the text format / structure of reports.
-static int option_output_format = FORMAT_JSON;
+/* static int option_output_format = FORMAT_JSON; */
 
 // If the output is set to an existing file, it will not overwrite it by default
 // (outputting to stdout instead). We can use an option to force overwriting.
@@ -133,6 +134,7 @@ static bool option_force_overwrite = false;
 /* Functions                                                                  */
 /******************************************************************************/
 
+/*
 static JsonNode*
 json_import(const char * inputpath)
 {
@@ -166,7 +168,7 @@ json_import(const char * inputpath)
     free(inputstring);
     return imported_json;
 }
-
+*/
 
 /**
  * Profile mode (one line print).
@@ -510,6 +512,7 @@ dbus_xml_parser (char * source)
  * Since arguments in D-Bus can be complicated stuff, we dedicate a function to
  * transform the received arguments to a JSON structure.
  */
+// TODO: get arg name.
 struct JsonNode *
 args_mangler (DBusMessageIter * args)
 {
@@ -1145,6 +1148,7 @@ query_bus (enum Queries query, const char *parameter)
  */
 #define MEM_CHUNK 32768
 #define HTML_EMPTY_FIELD "-"
+#define HTML_DATA_LIMIT 255
 char* message_to_html(JsonNode* message)
 {
     char* result = NULL;
@@ -1167,9 +1171,6 @@ char* message_to_html(JsonNode* message)
         
     while (node != NULL)
     {
-        // TEST:
-        /* printf ("\n### MESSAGE TO HTML LOOP\n"); */
-
         // Get machine time.
         char* sec = json_stringify(json_find_member(node, DBUS_JSON_SEC), JSON_FORMAT_NONE);
         char* usec = json_stringify(json_find_member(node, DBUS_JSON_USEC), JSON_FORMAT_NONE);
@@ -1182,10 +1183,8 @@ char* message_to_html(JsonNode* message)
 
         // Get Human time.
         JsonNode* htime_node = json_find_member(node, DBUS_JSON_TIME_HUMAN);
-        /* char* hour = json_stringify(json_find_member(htime_node, DBUS_JSON_HOUR), JSON_FORMAT_NONE); */
-        /* char* minute = json_stringify(json_find_member(htime_node, DBUS_JSON_MINUTE), JSON_FORMAT_NONE); */
-        /* char* second = json_stringify(json_find_member(htime_node, DBUS_JSON_SECOND), JSON_FORMAT_NONE); */
 
+        // Get time in 2-digits format.
         // TODO: stupid code.
         char hour[3];
         long hour_val = (long) json_find_member(htime_node, DBUS_JSON_HOUR)->number_ ;
@@ -1210,6 +1209,7 @@ char* message_to_html(JsonNode* message)
         strcat(htime, minute);
         strcat(htime, ":");
         strcat(htime, second);
+
 
         // Note that strings returned from string_ should not be freed.
 
@@ -1255,19 +1255,55 @@ char* message_to_html(JsonNode* message)
         else 
             member = HTML_EMPTY_FIELD;
 
-        /* char* reply_serial = json_stringify(json_find_member(node, DBUS_JSON_REPLY_SERIAL), JSON_FORMAT_NONE); */
-
-
-        /* char* path = json_find_member(node, DBUS_JSON_PATH)->string_; */
-        /* char* interface = json_find_member(node, DBUS_JSON_INTERFACE)->string_; */
-        /* char* member = json_find_member(node, DBUS_JSON_MEMBER)->string_; */
-
         // TODO: args.
+        // Separator: ', '
+        char* args = NULL;
+        size_t args_len = 1;
+        args = malloc(1);
+        args[0] = '\0';
+        temp = json_find_member(node, DBUS_JSON_ARGS);
+        if (temp != NULL)
+        {
+            JsonNode* arg_iter=json_first_child(temp);
+            JsonNode* arg_iter_element;
+            json_foreach (arg_iter, temp)
+            {
+                // '+1' for the separator.
+                arg_iter_element = json_find_member(arg_iter, DBUS_JSON_ARG_TYPE);
+                args_len += strlen(arg_iter_element->string_) + 1 ;
+                args = realloc ( args, args_len * sizeof(char));
+                strcat(args, arg_iter_element->string_);
+
+                strcat(args, "=");
+
+                arg_iter_element = json_find_member(arg_iter, DBUS_JSON_ARG_VALUE);
+                char* temp_str = json_stringify(arg_iter_element, JSON_FORMAT_NONE);
+                size_t temp_str_len = strlen(temp_str);
+                if (temp_str_len > HTML_DATA_LIMIT)
+                {
+                    char *buf = malloc ( (HTML_DATA_LIMIT+1) * sizeof(char));
+                    strncpy(buf, temp_str, HTML_DATA_LIMIT - 3);
+                    strcpy(buf+252, "...");
+                    free(temp_str);
+                    temp_str = buf;
+                    
+                }
+
+                args_len += temp_str_len +1;
+                args = realloc ( args, args_len * sizeof(char));
+                strcat(args, temp_str);
+                free(temp_str);
+
+                strcat(args, " ");
+            }
+        }
+        else
+            args = HTML_EMPTY_FIELD;
+
 
         // Note: do not forget +1 for the null terminating byte.
         result_size += html_row_begin_len + html_row_end_len + 1;
 
-        // TODO: cumbersome checks. Are they needed ?
         result_size +=  html_column_begin_len + html_column_end_len + strlen(mtime);
         result_size +=  html_column_begin_len + html_column_end_len + strlen(htime);
         result_size +=  html_column_begin_len + html_column_end_len + strlen(type);
@@ -1279,6 +1315,8 @@ char* message_to_html(JsonNode* message)
         result_size +=  html_column_begin_len + html_column_end_len + strlen(path);
         result_size +=  html_column_begin_len + html_column_end_len + strlen(interface);
         result_size +=  html_column_begin_len + html_column_end_len + strlen(member);
+
+        result_size +=  html_column_begin_len + html_column_end_len + strlen(args);
 
         // TODO: why does the following not work ?
         /* result = realloc( result, result_size * sizeof(char)); */
@@ -1331,6 +1369,12 @@ char* message_to_html(JsonNode* message)
 
         strcat( result, html_column_begin);
         strcat( result, member);
+        strcat( result, html_column_end);
+
+        fprintf (logfile, "[%s]\n", args);
+
+        strcat( result, html_column_begin);
+        strcat( result, args);
         strcat( result, html_column_end);
 
         strcat( result, html_row_end);
@@ -1452,14 +1496,35 @@ spy (char *filter, int opt)
 }
 
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+static void
+nice_exit (int sig)
+{
+    doneflag=1;
+    puts ("\nClosing...\n");
+}
 
 static void
 daemon_handler(int sig)
 {
-    spy(NULL, LIVE_OUTPUT_OFF);
-}
+    // Toggle spyflag so that it does not get recalled
+    if (spyflag==0)
+    {
+        spyflag = 1;
+        spy(NULL, LIVE_OUTPUT_OFF);
+    }
 
-/* #if DAHSEE_UI_WEB != 0 */
+    else
+    {
+        spyflag = 0;
+        doneflag=1;
+    }
+    
+}
+#pragma GCC diagnostic pop
+
+
 static void
 run_daemon ()
 {
@@ -1486,8 +1551,8 @@ run_daemon ()
 
     return;
 }
-/* #endif */
 
+// TODO: replace this with freopen():
 static void 
 prepare_file (const char* path, FILE** file, const char* mode)
 {
@@ -1514,6 +1579,10 @@ prepare_file (const char* path, FILE** file, const char* mode)
         }
     }
 }
+
+/******************************************************************************/
+/* Information                                                                */
+/******************************************************************************/
 
 static void
 print_help (const char *executable)
@@ -1551,21 +1620,11 @@ print_version ()
 {
     printf ("%s %s\n", APPNAME, VERSION);
     printf ("Copyright © %s %s\n", YEAR, AUTHOR);
-    /* puts ("MIT License\n"); */
-    /* puts ("This is free software: you are free to change and redistribute it.\n"); */
-    /* puts ("There is NO WARRANTY, to the extent permitted by law.\n"); */
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-static void
-nice_exit (int sig)
-{
-    doneflag=1;
-    puts ("\nClosing...\n");
-}
-#pragma GCC diagnostic pop
-
+/******************************************************************************/
+/* Main                                                                       */
+/******************************************************************************/
 
 int
 main (int argc, char **argv)
@@ -1575,7 +1634,7 @@ main (int argc, char **argv)
     extern char *optarg;
     extern int optind;
     extern int optopt;
-    const char* parameter;
+    const char* parameter = NULL;
 
     enum Queries query = QUERY_NONE;
     int exclusive_opt = 0;
@@ -1598,14 +1657,10 @@ main (int argc, char **argv)
         return 1;
     }
 
-/* #if DAHSEE_UI_WEB !=0 */
     // Fork variables.
     pid_t pid, sid;
     bool daemonize = false;
     while ((c = getopt (argc, argv, ":adfhi:I:L:ln:o:p:vu:")) != -1)
-/* #else */
-/*     while ((c = getopt (argc, argv, ":afhH:i:I:L:ln:o:p:vu:")) != -1) */
-/* #endif */
     {
         switch (c)
         {
@@ -1614,12 +1669,10 @@ main (int argc, char **argv)
             query = QUERY_ACTIVATABLE_NAMES;
             break;
 
-/* #if DAHSEE_UI_WEB != 0 */
         case 'd':
             exclusive_opt++;
             daemonize = true;
             break;
-/* #endif */
 
         case 'f':
             option_force_overwrite = true;
@@ -1729,7 +1782,6 @@ main (int argc, char **argv)
     /* free(source_text); */
     /* return 0; */
 
-
     if (query != QUERY_NONE)
     {
         JsonNode* source_node;
@@ -1764,13 +1816,13 @@ main (int argc, char **argv)
             json_print(dbus_xml_parser(source_node->string_));
 
             // Raw XML.
-            source_node = json_find_member(
-                json_find_element(
-                    json_find_member(
-                        query_bus (QUERY_INTROSPECT, parameter), DBUS_JSON_ARGS ),0), "value");
+            /* source_node = json_find_member( */
+            /*     json_find_element( */
+            /*         json_find_member( */
+            /*             query_bus (QUERY_INTROSPECT, parameter), DBUS_JSON_ARGS ),0), "value"); */
 
-            if (source_node != NULL)
-                fprintf (output, "%s\n", source_node->string_);
+            /* if (source_node != NULL) */
+            /*     fprintf (output, "%s\n", source_node->string_); */
 
             return 0;
         default:
@@ -1778,7 +1830,6 @@ main (int argc, char **argv)
         }
     }
 
-/* #if DAHSEE_UI_WEB != 0 */
     // Daemon
     else if (daemonize == true)
     {
@@ -1813,13 +1864,12 @@ main (int argc, char **argv)
         // TODO: need to log somewhere, otherwise will go to terminal.
         run_daemon ();
     }
-/* #endif */
     else
     {
         // Eavesdrop bus messages. Default bhaviour.
 
         // WARNING: considering that all remaining args are arguments may be
-        // POSIXLY_INCORRECT.  TODO: check behaviour of when POSIXLY_CORRECT is set.
+        // POSIXLY_INCORRECT.  TODO: check behaviour when POSIXLY_CORRECT is set.
 
         char * filter;
         if (argc-optind != 1)
@@ -1830,8 +1880,8 @@ main (int argc, char **argv)
         spy(filter, LIVE_OUTPUT_ON);
 
         // TEST: 
-        if (html_message != NULL)
-            fprintf (stderr, "%s\n", html_message);
+        /* if (html_message != NULL) */
+        /*     fprintf (stderr, "%s\n", html_message); */
     }
 
 
