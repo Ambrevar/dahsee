@@ -14,7 +14,7 @@ monitoring tools.
 The dbus-monitor, while light and quick, may lack some features to you. There is
 some other tools out there, but sometimes poorly finished, or coming with too
 much requirements and dependencies for compilation or execution that they do not
-exactly fit what could be meant by "system developement tools".
+exactly fit what could be meant by "system development tools".
 
 Dahsee aims to be full featured while being lightweight and simple.
 * Built in C.
