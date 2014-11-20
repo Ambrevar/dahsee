@@ -39,14 +39,6 @@ ifneq ($(UI_WEB),0)
 	LDFLAGS += $$(pkg-config --libs libmicrohttpd)
 endif
 
-## For GTK UI
-ifneq ($(UI_GTK),0)
-	SRC += ui_gtk.c
-	CFLAGS_ALL += -DDAHSEE_UI_GTK=$(UI_GTK)
-	CFLAGS_ALL += $$(pkg-config --cflags gtk+-2.0)
-	LDFLAGS += $$(pkg-config --libs gtk+-2.0)
-endif
-
 SRC += dahsee.c
 OBJ = ${SRC:.c=.o}
 
@@ -62,7 +54,6 @@ options:
 	@echo "LDFLAGS = ${LDFLAGS_ALL}"
 	@echo "CC      = ${CC}"
 	@echo "UI_WEB  = ${UI_WEB}"
-	@echo "UI_GTK  = ${UI_GTK}"
 
 ${BIN}: ${OBJ}
 	@${CC} ${LDFLAGS_ALL} $^ -o $@

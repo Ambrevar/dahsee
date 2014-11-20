@@ -14,7 +14,6 @@ YEAR = "2012"
 ## UI Support
 ## Use '0' to turn off, anything else to turn on.
 UI_WEB ?= 1
-UI_GTK ?= 0
 
 ## Paths
 PREFIX ?= /usr/local
