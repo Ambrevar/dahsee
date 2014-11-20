@@ -1,8 +1,5 @@
-
-                      Dahsee -- A D-Bus monnitoring tool.
-                     https://bitbucket.org/ambrevar/dahsee
-
-        Copyright 2012 Pierre Neidhardt <ambrevar [at] gmail [dot] com>
+# Dahsee - A D-Bus monnitoring tool
+### By Pierre Neidhardt
 
 
 Description
@@ -11,18 +8,20 @@ Description
 D-Bus development can be quiet painful because of the lack of analysis and
 monitoring tools.
 
-The dbus-monitor, while light and quick, may lack some features to you. There is
+The dbus-monitor, while light and fast, may lack some features to you. There are
 some other tools out there, but sometimes poorly finished, or coming with too
 much requirements and dependencies for compilation or execution that they do not
 exactly fit what could be meant by "system development tools".
 
 Dahsee aims to be full featured while being lightweight and simple.
+
 * Built in C.
 * There is no dependency but D-Bus and a C library.
 * The source code for the main program is a single C file.
-* The program is only one executable that is less than 50 KB.
+* The program is only one lightwieght executable.
 
 Features:
+
 * D-Bus messages filtering.
 * Comprehensive message description: timestamp, arguments, data payload, etc.
 * Statistics over scanned massages.
@@ -33,45 +32,27 @@ Features:
 Configuration
 -------------
 
-The only required dependency is D-Bus. You will need it for compilation and
-runtime.
-
-It should compile and run on any POSIX system where D-Bus can run.  Dahsee
-should run on any POSIX plateform, but as of 2012-08-09, this still needs
-confirmation.
+The only required dependency is D-Bus. You will need it both for compile-time
+and runtime. It should compile and run on any POSIX system where D-Bus can run.
 
 Optionally you will need microhttpd (a.k.a. libmicrohttpd) for the Web
 interface.
 
-Specify your compilation and installation option in 'config.mk'.
-
-
-Building
---------
-
-  $ make
-
+You can adapt the compilation and installation options in `config.mk`.
 
 Installation
 ------------
 
-  $ make install
+Run `make install` to install the program to the /usr/local prefix. You can
+change the prefix from command-line, e.g.
 
+	make install prefix='/usr'
 
-Further reading
----------------
+Packagers may want to install the program to a specific folder:
 
-  $ man dahsee
+	make install DESTDIR='<destdir>'
 
+Project status
+--------------
 
-Home
-----
-
-Git repository:
-https://ambrevar@bitbucket.org/ambrevar/dahsee.git
-
-
-Hacking
--------
-
-Dahsee uses the Linux kernel coding style, with 4-spaces tabs.
+This project has been unmaintained since August 2012. Feel free to take it over.
