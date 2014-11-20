@@ -26,7 +26,18 @@
  * SOFTWARE.
  ******************************************************************************/
 
-// TODO: check if all message_mangler calls get properly cleaned.
+/*
+QUESTIONS:
+Why does "ListNames" method on DBUS_SERVICE_DBUS,DBUS_PATH_DBUS does not list org.freedesktop.DBus ?
+
+-Test if object name MUST begin with "/"
+-Test if Interface can be anything... Depends?
+-Get method call args
+-Test object hierarchy (if parent gets it; then child too, or vice versa)
+-how should react deamon argument?
+
+TODO: check if all message_mangler calls get properly cleaned.
+*/
 
 #include <signal.h>
 #include <stdbool.h>
