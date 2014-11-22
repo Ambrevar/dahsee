@@ -8,11 +8,7 @@ Description
 D-Bus development can be quiet painful because of the lack of analysis and
 monitoring tools.
 
-The dbus-monitor, while light and fast, may lack some features to you. There are
-some other tools out there, but sometimes poorly finished, or coming with too
-much requirements and dependencies for compilation or execution that they do not
-exactly fit what could be meant by "system development tools".
-
+The dbus-monitor, while light and fast, may lack some features to you.
 Dahsee aims to be full featured while being lightweight and simple.
 
 * Built in C.
