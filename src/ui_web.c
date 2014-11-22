@@ -94,12 +94,19 @@ static char *load_page(const char *url) {
 Server callback. On HTTP request, we scan the URL and return the appropriate
 page.
 */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 static int answer_to_connection(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method,
 	const char *version, const char *upload_data,
 	size_t *upload_data_size, void **con_cls) {
+
+	/* TODO: Check if it wise not to use these parameters. */
+	(void) cls;
+	(void) method;
+	(void) version;
+	(void) upload_data;
+	(void) upload_data_size;
+	(void) con_cls;
+
 	/* TODO: add to logfile. */
 	fprintf(stderr, "URL=[%s]\n", url);
 
@@ -243,7 +250,6 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection,
 
 	return ret;
 }
-#pragma GCC diagnostic pop
 
 /* TODO: Need to set mutex, or simple test. */
 /* static void */
