@@ -15,7 +15,6 @@ CFLAGS+=-g -O0
 CFLAGS+=-Wall -Wextra -Wshadow -Winline
 # CFLAGS+=-Wdeclaration-after-statement
 LDFLAGS+=-lm
-LDFLAGS+=-lpcap -ljson
 
 ifeq ($(USE_GLIB),true)
 	CFLAGS+=$$(pkg-config --cflags dbus-glib-1)
