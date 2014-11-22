@@ -1,54 +1,79 @@
+ROOT = .
+include ${ROOT}/config.mk
+
 ################################################################################
-# Dahsee makefile
-# 2012-08-13
-################################################################################
+## Build.
 
-include config.mk
+.PHONY: all
+all: app doc
 
+.PHONY: app
+app:
+	${MAKE} -C ${srcdir}
 
-all: man
-	@make -C src/
+.PHONY: doc
+doc:
+	${MAKE} -C ${docsrcdir}
 
-check:
-	@make -C test/
+.PHONY: debug
+debug:
+	CFLAGS+="-g3 -O0 -DDEBUG=9" ${MAKE}
 
+.PHONY: test
+test:
+	${MAKE} -C ${testdir}
+
+.PHONY: clean
 clean:
-	@make -C src/ clean
-	@make -C test/ clean
-	@rm -rf "doc/${BIN}.1.gz"
+	${MAKE} -C ${srcdir} clean
+	${MAKE} -C ${docsrcdir} clean
+	${MAKE} -C ${testdir} clean
 
-dist: ${BIN}-${VERSION}.tar.gz
+################################################################################
+## Install / Uninstall.
 
-${BIN}-${VERSION}.tar.gz: config.mk COPYING data doc makefile README src test
-	@echo Creating distribution tarball.
-	@mkdir -p "${BIN}-${VERSION}"
-	@cp -R $^ "${BIN}-${VERSION}"
-	@tar czf "$@" "${BIN}-${VERSION}"
-	@rm -rf "${BIN}-${VERSION}"
+INSTALL ?= install
+INSTALL_DATA ?= ${INSTALL} -m644
+INSTALL_DIR ?= ${INSTALL} -d
 
-man: doc/${BIN}.1
-	@gzip -c $< > "doc/${BIN}.1.gz"
+prefix ?= /usr/local
+exec_prefix ?= ${prefix}
+datarootdir ?= ${prefix}/share
 
-## TODO: remove echos and @.
-install: all
-	@echo "PREFIX  = ${PREFIX}"
-	@echo Installing executable file to "${DESTDIR}${BINDIR}"
-	@mkdir -p "${DESTDIR}${BINDIR}"
-	@cp -f "src/${BIN}" "${DESTDIR}${BINDIR}"
-	@chmod 755 "${DESTDIR}${BINDIR}/${BIN}"
-	@eho Installing man page to "${DESTDIR}${MAN1DIR}"
-	@mkdir -p "${DESTDIR}${MAN1DIR}"
-	@cp -f "doc/${BIN}.1.gz"  "${DESTDIR}${MAN1DIR}"
-	@eho Installing web data to "${DESTDIR}${DATADIR}/${BIN}"
-	@mkdir -p "${DESTDIR}${DATADIR}/${BIN}"
-	@cp -f data/*  "${DESTDIR}${DATADIR}/${BIN}"
+bindir ?= ${exec_prefix}/bin
+datadir ?= ${datarootdir}
+docdir ?= ${datarootdir}/doc
+includedir ?= ${prefix}/include
+infodir ?= ${datarootdir}/info
+libdir ?= ${exec_prefix}/lib
+libexecdir ?= ${exec_prefix}/libexecdir
+licensedir ?= ${datarootdir}/licenses
+localedir ?= ${datarootdir}/locale
+localstatedir ?= ${prefix}/var
+mandir ?= ${datarootdir}/man
+runstatedir ?= ${prefix}/run
+sbindir ?= ${exec_prefix}/sbin
+sharedstatedir ?= ${prefix}/com
+sysconfdir ?= ${perfix}/etc
 
+.PHONY: install
+install:
+	${MAKE}
+	${INSTALL_DIR} ${DESTDIR}${bindir}
+	${INSTALL} ${srcdir}/${cmdname} ${DESTDIR}${bindir}/${cmdname}
+	${INSTALL_DIR} ${DESTDIR}${mandir}/man1
+	${INSTALL_DATA} ${docsrcdir}/${cmdname}.1 ${DESTDIR}${mandir}/man1/${cmdname}.1
+	${INSTALL_DIR}  ${DESTDIR}${licensedir}/${cmdname}
+	${INSTALL_DATA} LICENSE ${DESTDIR}${licensedir}/${cmdname}/LICENSE
+	${INSTALL_DIR}  ${DESTDIR}${datadir}/${cmdname}/data
+	${INSTALL_DATA} data/* ${DESTDIR}${datadir}/${cmdname}/data/
+
+.PHONY: uninstall
 uninstall:
-	@echo Removing executable file "${DESTDIR}${BINDIR}/${BIN}"
-	@rm -f "${DESTDIR}${BINDIR}/${BIN}"
-	@echo Removing man page "${DESTDIR}${MAN1DIR}/${BIN}.1.gz"
-	@rm -f "${DESTDIR}${MAN1DIR}/${BIN}.1.gz"
-	@echo Removing web data from "${DESTDIR}${DATADIR}/${BIN}"
-	@rm -rf "${DESTDIR}${DATADIR}/${BIN}"
-
-.PHONY = all check clean dist install uninstall
+	-rm -f ${DESTDIR}${bindir}/${cmdname}
+	-rmdir -p ${DESTDIR}${bindir}
+	-rm -f ${DESTDIR}${mandir}/${cmdname}.${mansection}.gz
+	-rmdir -p ${DESTDIR}${mandir}
+	-rm -f ${DESTDIR}${licensedir}/${cmdname}/LICENSE
+	-rmdir -p ${DESTDIR}${licensedir}/${cmdname}
+	-rm -rf ${DESTDIR}${datadir}/${cmdname}

@@ -1,6 +1,5 @@
 #include <dbus/dbus.h>
 #include <stdbool.h>
-/* #include <unistd.h> */
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +20,4 @@
 #define TEST_METHOD_NAME "TestMethodName"
 
 #define FILTER_SIZE 1024
-
-/* #define SPY_BUS "spy.lair" */
 

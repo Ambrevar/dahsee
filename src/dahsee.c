@@ -1478,6 +1478,7 @@ static void nice_exit(int sig) {
 }
 
 static void daemon_handler(int sig) {
+	(void)sig;
 	/* Toggle spyflag so that it does not get recalled */
 	if (spyflag == 0) {
 		spyflag = 1;
@@ -1564,12 +1565,12 @@ static void print_help(const char *executable) {
 	puts("With no argument, it will catch D-Bus messages matching FILTER. The syntax follows D-Bus specification. If FILTER is empty, all messages are caught.");
 
 	puts("");
-	printf("See the %s man page for more information.\n", MANPAGE);
+	printf("See the %s(1) man page for more information.\n", APPNAME);
 }
 
 static void print_version() {
 	printf("%s %s\n", APPNAME, VERSION);
-	printf("Copyright © %s %s\n", YEAR, AUTHOR);
+	printf("Copyright © %s %s\n", YEAR, AUTHORS);
 }
 
 /******************************************************************************/

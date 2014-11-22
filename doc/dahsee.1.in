@@ -1,16 +1,5 @@
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-.\" Dahsee man page.
-.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-.ds appname Dahsee
-.ds cmdname dahsee
-.ds manname DAHSEE
-.ds version 0.1
-.ds year 2012
-.ds date \*[year]-08-14
-.ds authors Pierre Neidhardt
-.
-.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-.TH \*[manname] 1 "\*[date]" "\*[appname] \*[version]" "User Commands"
+.TH \*[manname] \*[section] "\*[date]" "\*[appname] \*[version]" "User Commands"
 .
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH NAME
