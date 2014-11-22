@@ -11,6 +11,10 @@ all: app doc
 app:
 	${MAKE} -C ${srcdir}
 
+.PHONY: ui
+ui:
+	${MAKE} -C ${srcdir} ui
+
 .PHONY: doc
 doc:
 	${MAKE} -C ${docsrcdir}

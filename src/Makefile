@@ -11,15 +11,19 @@ LDLIBS += `pkg-config --libs dbus-1`
 CPPFLAGS += -I "ccan/json/"
 CFLAGS += -std=c11
 
-CPPFLAGS += -DDAHSEE_UI_WEB=1
-LDLIBS += `pkg-config --libs libmicrohttpd`
 PORT ?= 7117
 CPPFLAGS += -DPORT=${PORT}
 
+all: ${cmdname}
+
 ## The recipe is the implicit rule of GNU Make. Unfortunately non-GNU Make are
 ## not so smart at guessing the right recipe so we need to add it here.
-${cmdname}: ui_web.o ccan/json/json.o ${cmdname}.o
-	${CC} ${LDFLAGS} ${TARGET_ARCH} ui_web.o ccan/json/json.o ${cmdname}.o $(LOADLIBES) $(LDLIBS) -o $@
+${cmdname}: ${ui_dep} ccan/json/json.o ${cmdname}.o
+	${CC} ${LDFLAGS} ${TARGET_ARCH} ${ui_dep} ccan/json/json.o ${cmdname}.o $(LOADLIBES) $(LDLIBS) -o $@
+
+.PHONY: ui
+ui:
+	ui_dep=ui_web.o CPPFLAGS+="-DDAHSEE_UI_WEB=1" LDLIBS+="`pkg-config --libs libmicrohttpd`" ${MAKE}
 
 .PHONY: debug
 debug:

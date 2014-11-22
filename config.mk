@@ -18,11 +18,6 @@ testdir = tests
 ## Listening port of the daemon.
 # PORT ?= 7117
 
-## TODO: change this behaviour.
-## UI Support
-## Use '0' to turn off, anything else to turn on.
-UI_WEB ?= 1
-
 ## Optional compilation flags.
 CFLAGS ?= -pedantic -std=c11 -Wall -Wextra -Wshadow
 

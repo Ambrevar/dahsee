@@ -43,6 +43,8 @@ You can adapt the compilation and installation options in `config.mk`.
 Installation
 ------------
 
+Optional: run `make ui` to embed the web interface in the build.
+
 Run `make install` to install the program to the /usr/local prefix. You can
 change the prefix from command-line, e.g.
 
