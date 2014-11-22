@@ -1545,7 +1545,11 @@ static void print_help(const char *executable) {
 	printf("   or: %s OPTION [ARG]\n\n", executable);
 
 	puts("  -a        List activatable bus names.");
+	#if DAHSEE_UI_WEB != 0
+	printf("  -d        Daemonize on port %d.\n", PORT);
+	#else
 	puts("  -d        Daemonize.");
+	#endif
 	puts("  -f        Force overwriting when output file exists.");
 	puts("  -h        Print this help.");
 	puts("  -I NAME   Return introspection of NAME.");

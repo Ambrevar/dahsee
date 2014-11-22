@@ -13,6 +13,8 @@ CFLAGS += -std=c11
 
 CPPFLAGS += -DDAHSEE_UI_WEB=1
 LDLIBS += `pkg-config --libs libmicrohttpd`
+PORT ?= 7117
+CPPFLAGS += -DPORT=${PORT}
 
 ## The recipe is the implicit rule of GNU Make. Unfortunately non-GNU Make are
 ## not so smart at guessing the right recipe so we need to add it here.

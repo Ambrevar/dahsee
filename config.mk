@@ -15,7 +15,10 @@ testdir = tests
 
 ## USER SETTINGS
 
-## TODO: change behaviour of this.
+## Listening port of the daemon.
+# PORT ?= 7117
+
+## TODO: change this behaviour.
 ## UI Support
 ## Use '0' to turn off, anything else to turn on.
 UI_WEB ?= 1

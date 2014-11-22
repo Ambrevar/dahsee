@@ -39,7 +39,9 @@ Interface is optional, it comes as a convenient feature to display stats.
 #include <sys/select.h>
 #include <sys/socket.h>
 
+#ifndef PORT
 #define PORT 7117
+#endif
 
 void run_server();
 
