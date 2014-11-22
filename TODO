@@ -5,7 +5,6 @@
 -Daemon socket: get term massage, status, spy, (opt: web output, [-P PORT]).
 -Clean test.
 -Clean code.
--Clean makefile => condition for installation
 -Comprehensive man page.
 -Make JSON lib C99 compliant.
 -Curses.
